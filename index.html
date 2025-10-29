@@ -1,338 +1,401 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<title>Black Cab Unite — Coventry Rugby</title>
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="theme-color" content="#1f6feb" />
-<link rel="manifest" href="manifest.json" />
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<style>
-body {
-  margin:0; font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial;
-  background:#f7fafc; height:100vh; display:flex; flex-direction:column;
-}
-.container { padding:12px; display:flex; flex-direction:column; height:100%; gap:12px; box-sizing:border-box; }
-header { display:flex; justify-content:space-between; align-items:center; }
-header h2 { margin:0; font-size:20px; }
-.main { flex:1; display:flex; gap:12px; min-height:0; }
-#map { flex:1; border-radius:12px; box-shadow:0 6px 16px rgba(0,0,0,0.08); }
-.panel {
-  width:380px; min-width:260px; background:white; border-radius:12px;
-  padding:12px; box-shadow:0 6px 16px rgba(0,0,0,0.06);
-  display:flex; flex-direction:column; gap:12px;
-}
-.order-btn {
-  background:#1f6feb; color:white; border:none; padding:16px; font-size:18px;
-  border-radius:10px; cursor:pointer; width:100%;
-  box-shadow:0 6px 12px rgba(31,111,235,0.18);
-}
-.order-btn:active { transform:translateY(1px); }
-input[type=text], input[type=tel] {
-  width:100%; padding:8px; border-radius:8px; border:1px solid #ccc;
-  margin-bottom:8px; box-sizing:border-box;
-}
-.status { padding:8px; border-radius:8px; background:#eef4ff; color:#08306b; font-weight:600; font-size:13px; }
-table { width:100%; border-collapse:collapse; }
-th,td { padding:6px; text-align:left; border-bottom:1px solid #eee; font-size:13px; }
-thead { background:#f0f0f0; }
-footer { text-align:center; font-size:12px; color:#666; padding:6px; }
-#logButton {
-  position:absolute; top:12px; right:12px; z-index:1000;
-  background:#1f6feb; color:#fff; border:none; border-radius:8px;
-  padding:8px 12px; font-size:14px; cursor:pointer;
-}
-#logOverlay {
-  position:fixed; top:0; left:0; width:100%; height:100%;
-  background:rgba(0,0,0,0.4); display:none; justify-content:center; align-items:center;
-  z-index:2000;
-}
-#logPanel {
-  background:white; width:80%; max-width:600px; height:70%;
-  border-radius:12px; box-shadow:0 8px 20px rgba(0,0,0,0.3);
-  overflow:auto; padding:12px; position:relative;
-}
-#closeLog {
-  position:absolute; top:8px; right:8px; cursor:pointer; background:none; border:none; font-size:18px;
-}
-#logContent { font-family:monospace; font-size:13px; white-space:pre-line; }
-</style>
+  <meta charset="utf-8" />
+  <title>Black Cab Unite — Coventry Rugby</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <style>
+    :root {
+      --accent: #1f6feb;
+      --bg: #f7fafc;
+      --card: #ffffff;
+    }
+    html, body {
+      height: 100%;
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial;
+      background: var(--bg);
+      color: #111;
+    }
+    .container {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      gap: 12px;
+      padding: 12px;
+      box-sizing: border-box;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+    .main {
+      display: flex;
+      flex: 1;
+      gap: 12px;
+      min-height: 0;
+    }
+    #map {
+      flex: 1;
+      border-radius: 12px;
+      box-shadow: 0 6px 16px rgba(0,0,0,0.08);
+    }
+    .panel {
+      width: 380px;
+      min-width: 260px;
+      background: var(--card);
+      border-radius: 12px;
+      padding: 12px;
+      box-shadow: 0 6px 16px rgba(0,0,0,0.06);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      overflow: hidden;
+    }
+    .order-btn {
+      background: var(--accent);
+      color: white;
+      border: none;
+      padding: 16px;
+      font-size: 18px;
+      border-radius: 10px;
+      cursor: pointer;
+      width: 100%;
+      box-shadow: 0 6px 12px rgba(31,111,235,0.18);
+    }
+    input[type=text], input[type=tel] {
+      width: 100%;
+      padding: 8px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      margin-bottom: 8px;
+      box-sizing: border-box;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th, td {
+      padding: 6px;
+      text-align: left;
+      border-bottom: 1px solid #eee;
+      font-size: 13px;
+    }
+    thead { background: #f0f0f0; }
+    .status { padding:10px; border-radius:8px; background:#f2f6ff; color:#08306b; font-weight:600; text-align:center; }
+    footer { font-size:12px; color:#666; text-align:center; padding:8px; }
 
-<script>
-// PWA registration
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('service-worker.js')
-      .then(reg => console.log('✅ Service Worker registered:', reg.scope))
-      .catch(err => console.error('❌ SW registration failed:', err));
-  });
-}
-</script>
+    /* Scrollable jobs */
+    .jobs-scroll {
+      flex:1;
+      overflow-y:auto;
+      margin-top:8px;
+      border-top:1px solid #eee;
+      padding-top:6px;
+    }
+
+    /* Activity log overlay */
+    #logOverlay {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.7);
+      display: none;
+      z-index: 2000;
+      justify-content: center;
+      align-items: center;
+    }
+    #logContent {
+      background: #fff;
+      width: 80%;
+      height: 70%;
+      border-radius: 12px;
+      padding: 12px;
+      box-shadow: 0 6px 16px rgba(0,0,0,0.2);
+      overflow: auto;
+      font-family: monospace;
+      font-size: 12px;
+    }
+    #closeLog {
+      position: absolute;
+      top: 12px;
+      right: 24px;
+      background: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 6px 10px;
+      cursor: pointer;
+    }
+    .small-btn {
+      border: 1px solid #ccc;
+      background: #fff;
+      padding: 6px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+  </style>
 </head>
 <body>
-<div class="container">
-  <header>
-    <h2>🏉 Black Cab Unite — Coventry Rugby</h2>
-    <div class="status" id="connectionStatus">MQTT: disconnected</div>
-  </header>
-
-  <button id="logButton">Activity Log</button>
-
-  <div class="main">
-    <div id="map"></div>
-
-    <div class="panel">
-      <!-- Sticky passenger input area -->
-      <div style="position:sticky; top:0; background:white; z-index:5;">
-        <div style="display:flex;gap:8px;">
-          <div style="flex:1;">
-            <label><strong>Name:</strong></label>
-            <input type="text" id="customerName" placeholder="Passenger name" />
-          </div>
-          <div style="flex:1;">
-            <label><strong>Phone:</strong></label>
-            <input type="tel" id="customerPhone" placeholder="+44 7123 456789" />
-          </div>
-        </div>
-        <button class="order-btn" id="orderBtn">ORDER TAXI</button>
+  <div class="container">
+    <header>
+      <h2>🏉 Black Cab Unite — Coventry Rugby</h2>
+      <div>
+        <span id="connectionStatus" class="status">MQTT: disconnected</span>
+        <button id="logButton" class="small-btn">📋 View Log</button>
       </div>
+    </header>
 
-      <!-- Scrollable job list -->
-      <div style="flex:1; overflow-y:auto; margin-top:12px;">
-        <div style="font-weight:700;margin-bottom:6px;">Current Jobs</div>
-        <table id="jobsTable">
-          <thead><tr><th>Job ID</th><th>Name</th><th>Phone</th><th>Driver</th><th>Status</th></tr></thead>
-          <tbody></tbody>
-        </table>
+    <div class="main">
+      <div id="map"></div>
+      <div class="panel">
+        <div style="position:sticky; top:0; background:white; z-index:10;">
+          <div style="display:flex; gap:8px;">
+            <div style="flex:1;">
+              <label><strong>Name:</strong></label>
+              <input type="text" id="customerName" placeholder="Passenger name" />
+            </div>
+            <div style="flex:1;">
+              <label><strong>Phone:</strong></label>
+              <input type="tel" id="customerPhone" placeholder="+44 7123 456789" />
+            </div>
+          </div>
+          <button class="order-btn" id="orderBtn">ORDER TAXI</button>
+        </div>
+
+        <div class="jobs-scroll">
+          <div style="font-weight:700;margin-bottom:6px;">Current Jobs</div>
+          <table id="jobsTable">
+            <thead><tr><th>Job ID</th><th>Name</th><th>Phone</th><th>Driver</th><th>Status</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
       </div>
     </div>
+    <footer>Black Cab Unite — Coventry Rugby (Butts Park Arena)</footer>
   </div>
-</div>
 
-<!-- Log overlay -->
-<div id="logOverlay">
-  <div id="logPanel">
-    <button id="closeLog">&times;</button>
-    <h3>Activity Log</h3>
+  <!-- Activity Log Overlay -->
+  <div id="logOverlay">
+    <button id="closeLog">✖ Close</button>
     <div id="logContent"></div>
   </div>
-</div>
 
-<footer>Black Cab Unite — Coventry Rugby, Butts Park Arena</footer>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <script>
+    const PUB_ID = 'coventry-rugby-butts-park';
+    const PUB_NAME = 'Coventry Rugby — Butts Park Arena';
+    const PUB_COORDS = { lat: 52.407234, lng: -1.525504 };
+    const BIDDING_WINDOW_MS = 60_000;
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
-<script>
-const PUB_ID = 'coventry-rugby-butts-park';
-const PUB_NAME = 'Coventry Rugby — Butts Park Arena';
-const PUB_COORDS = { lat: 52.407234, lng: -1.525504 };
-const LOCATION_NAME = 'Butts Park Arena, Coventry';
-const BIDDING_WINDOW_MS = 60_000;
+    const el = {
+      connectionStatus: document.getElementById('connectionStatus'),
+      customerName: document.getElementById('customerName'),
+      customerPhone: document.getElementById('customerPhone'),
+      orderBtn: document.getElementById('orderBtn'),
+      jobsTable: document.querySelector('#jobsTable tbody'),
+      logButton: document.getElementById('logButton'),
+      logOverlay: document.getElementById('logOverlay'),
+      logContent: document.getElementById('logContent'),
+      closeLog: document.getElementById('closeLog')
+    };
 
-const el = {
-  connectionStatus: document.getElementById('connectionStatus'),
-  customerName: document.getElementById('customerName'),
-  customerPhone: document.getElementById('customerPhone'),
-  orderBtn: document.getElementById('orderBtn'),
-  jobsTable: document.querySelector("#jobsTable tbody"),
-  logButton: document.getElementById('logButton'),
-  logOverlay: document.getElementById('logOverlay'),
-  closeLog: document.getElementById('closeLog'),
-  logContent: document.getElementById('logContent')
-};
+    let client = null;
+    let visibleJobs = JSON.parse(localStorage.getItem('visibleJobs') || '{}');
+    let pendingJobs = {};
+    let offlineQueue = JSON.parse(localStorage.getItem('offlineQueue') || '[]');
+    let drivers = {};
+    let logText = localStorage.getItem('activityLog') || '';
+    let simActive = false;
 
-let visibleJobs = JSON.parse(localStorage.getItem('visibleJobs') || '{}');
-let pendingJobs = {};
-let drivers = {};
-let client = null;
-
-// === MAP ===
-const map = L.map('map').setView([PUB_COORDS.lat, PUB_COORDS.lng], 15);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-L.marker([PUB_COORDS.lat, PUB_COORDS.lng]).addTo(map)
-  .bindPopup(`<strong>${PUB_NAME}</strong><br>${LOCATION_NAME}`);
-
-// === LOGGING ===
-function log(msg) {
-  const time = new Date().toLocaleTimeString();
-  const line = `[${time}] ${msg}\n`;
-  console.log(line);
-  el.logContent.textContent = line + el.logContent.textContent;
-}
-el.logButton.onclick = () => el.logOverlay.style.display = 'flex';
-el.closeLog.onclick = () => el.logOverlay.style.display = 'none';
-
-// === UTILITIES ===
-function distanceMeters(a, b) {
-  const R = 6371000;
-  const toRad = x => x * Math.PI / 180;
-  const φ1 = toRad(a.lat), φ2 = toRad(b.lat);
-  const Δφ = toRad(b.lat - a.lat);
-  const Δλ = toRad(b.lng - a.lng);
-  const a_ = Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
-  return R * 2 * Math.atan2(Math.sqrt(a_), Math.sqrt(1 - a_));
-}
-function calculateETA(m) { return Math.ceil(m / 400); } // ~400 m/min
-
-// === MQTT ===
-function connectMQTT() {
-  el.connectionStatus.textContent = 'MQTT: connecting...';
-  client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt');
-  client.on('connect', () => {
-    el.connectionStatus.textContent = 'MQTT: connected';
-    client.subscribe(`jobs/+/status`);
-    client.subscribe(`jobs/+/accept`);
-    client.subscribe('drivers/+/location');
-    log('✅ Connected to MQTT broker');
-  });
-
-  client.on('message', (topic, message) => {
-    const msg = message.toString();
-    try {
-      const data = JSON.parse(msg);
-
-      // Update driver location
-      if (topic.startsWith('drivers/') && topic.endsWith('/location')) {
-        const id = topic.split('/')[1];
-        drivers[id] = { lat: data.lat, lng: data.lng, data };
-      }
-
-      // Status updates
-      if (topic.startsWith('jobs/') && topic.endsWith('/status')) {
-        const jobId = topic.split('/')[1];
-        if (visibleJobs[jobId]) {
-          visibleJobs[jobId].status = data.status;
-          visibleJobs[jobId].driver = data.driver || '-';
-          updateJobsTable();
-          localStorage.setItem('visibleJobs', JSON.stringify(visibleJobs));
-        }
-      }
-
-      // Driver bids
-      if (topic.startsWith('jobs/') && topic.endsWith('/accept')) {
-        const jobId = topic.split('/')[1];
-        const { driver, lat, lng } = data;
-        if (!pendingJobs[jobId]) pendingJobs[jobId] = { bids: {} };
-        pendingJobs[jobId].bids[driver] = { lat, lng, timestamp: Date.now() };
-        log(`📨 Bid received from ${driver} for ${jobId}`);
-      }
-
-    } catch (err) {
-      log('⚠️ MQTT parse error: ' + err.message);
+    // === LOGGING ===
+    function logMsg(msg) {
+      const ts = new Date().toLocaleTimeString();
+      logText = `[${ts}] ${msg}\n` + logText;
+      localStorage.setItem('activityLog', logText);
+      el.logContent.textContent = logText;
     }
-  });
-}
 
-// === FINALIZE BIDDING ===
-function finalizeBidding(jobId) {
-  const job = pendingJobs[jobId];
-  if (!job) return;
+    // === MAP ===
+    const map = L.map('map').setView([PUB_COORDS.lat, PUB_COORDS.lng], 15);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+    L.marker([PUB_COORDS.lat, PUB_COORDS.lng]).addTo(map).bindPopup(PUB_NAME);
 
-  const bids = Object.entries(job.bids || {});
-  let winner = null;
-
-  if (bids.length > 0) {
-    const valid = bids.filter(([id]) => {
-      const d = drivers[id];
-      return d && (d.data?.status === 'idle' || d.data?.status === 'available');
-    });
-    if (valid.length > 0) {
-      valid.sort(([aId, a], [bId, b]) => {
-        const distA = distanceMeters(a, { lat: job.lat, lng: job.lng });
-        const distB = distanceMeters(b, { lat: job.lat, lng: job.lng });
-        return distA - distB;
+    // === MQTT ===
+    function connectMQTT() {
+      el.connectionStatus.textContent = 'MQTT: connecting...';
+      client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt');
+      client.on('connect', () => {
+        el.connectionStatus.textContent = 'MQTT: connected';
+        logMsg('✅ Connected to MQTT');
+        client.subscribe('drivers/+/location');
+        client.subscribe('jobs/+/accept');
+        client.subscribe('jobs/+/status');
+        resendOfflineJobs();
       });
-      winner = valid[0][0];
-      if (visibleJobs[jobId]) {
+
+      client.on('message', (topic, message) => {
+        try {
+          const data = JSON.parse(message.toString());
+          if (topic.endsWith('/location')) {
+            const id = topic.split('/')[1];
+            updateDriver(id, data.lat, data.lng);
+          }
+          if (topic.endsWith('/accept')) {
+            const jobId = topic.split('/')[1];
+            const { driver, lat, lng } = data;
+            pendingJobs[jobId] = pendingJobs[jobId] || { bids: {} };
+            pendingJobs[jobId].bids[driver] = { lat, lng };
+            logMsg(`📨 Bid from ${driver} for ${jobId}`);
+          }
+          if (topic.endsWith('/status')) {
+            const jobId = topic.split('/')[1];
+            if (visibleJobs[jobId]) {
+              visibleJobs[jobId].status = data.status;
+              visibleJobs[jobId].driver = data.driver || visibleJobs[jobId].driver;
+              updateJobsTable();
+            }
+          }
+        } catch (e) { console.warn(e); }
+      });
+    }
+
+    // === DRIVER UPDATE ===
+    function updateDriver(id, lat, lng) {
+      if (!id) return;
+      if (!drivers[id]) {
+        drivers[id] = { marker: L.marker([lat, lng]).addTo(map) };
+      } else {
+        drivers[id].marker.setLatLng([lat, lng]);
+      }
+    }
+
+    // === SEND ORDER ===
+    function sendOrder() {
+      const name = el.customerName.value.trim();
+      const phone = el.customerPhone.value.trim();
+      if (!name || !phone) return alert('Enter both name and phone');
+
+      const jobId = 'job-' + Math.random().toString(36).substr(2, 8);
+      const job = {
+        job: jobId,
+        pub: PUB_ID,
+        pubName: PUB_NAME,
+        customerName: name,
+        customerPhone: phone,
+        lat: PUB_COORDS.lat,
+        lng: PUB_COORDS.lng,
+        ts: Date.now(),
+        status: 'bidding'
+      };
+
+      visibleJobs[jobId] = job;
+      localStorage.setItem('visibleJobs', JSON.stringify(visibleJobs));
+      updateJobsTable();
+      logMsg(`🚕 New job ${jobId} (${name})`);
+
+      if (client && client.connected) {
+        client.publish(`pubs/requests/${PUB_ID}`, JSON.stringify(job));
+        setTimeout(() => finalizeBidding(jobId), BIDDING_WINDOW_MS);
+      } else {
+        offlineQueue.push(job);
+        localStorage.setItem('offlineQueue', JSON.stringify(offlineQueue));
+        logMsg(`📦 Stored offline job ${jobId}`);
+      }
+
+      el.customerName.value = '';
+      el.customerPhone.value = '';
+    }
+
+    // === RESEND OFFLINE JOBS ===
+    function resendOfflineJobs() {
+      if (offlineQueue.length === 0) return;
+      offlineQueue.forEach(j => {
+        client.publish(`pubs/requests/${PUB_ID}`, JSON.stringify(j));
+        logMsg(`☁️ Resent job ${j.job}`);
+      });
+      offlineQueue.length = 0;
+      localStorage.setItem('offlineQueue', '[]');
+    }
+
+    // === FINALIZE BIDDING ===
+    function distanceMeters(a, b) {
+      const R = 6371000;
+      const toRad = x => x * Math.PI / 180;
+      const φ1 = toRad(a.lat), φ2 = toRad(b.lat);
+      const Δφ = toRad(b.lat - a.lat);
+      const Δλ = toRad(b.lng - a.lng);
+      const a_ = Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
+      return R * 2 * Math.atan2(Math.sqrt(a_), Math.sqrt(1-a_));
+    }
+    function finalizeBidding(jobId) {
+      const job = pendingJobs[jobId];
+      if (!job) return;
+      const bids = Object.entries(job.bids || {});
+      let winner = null;
+      if (bids.length > 0) {
+        bids.sort(([,a],[,b]) => distanceMeters(a,{lat:PUB_COORDS.lat,lng:PUB_COORDS.lng}) - distanceMeters(b,{lat:PUB_COORDS.lat,lng:PUB_COORDS.lng}));
+        winner = bids[0][0];
+      }
+      if (winner) {
         visibleJobs[jobId].status = 'allocated';
         visibleJobs[jobId].driver = winner;
-        const dist = distanceMeters(job.bids[winner], { lat: job.lat, lng: job.lng });
-        visibleJobs[jobId].eta = calculateETA(dist);
+        client.publish(`jobs/${jobId}/status`, JSON.stringify({ job: jobId, driver: winner, status: 'allocated', ts: Date.now() }));
+        logMsg(`🏆 Job ${jobId} awarded to ${winner}`);
+      } else {
+        visibleJobs[jobId].status = 'no_bids';
+        logMsg(`⏰ No bids for ${jobId}`);
       }
-      log(`🏆 ${jobId} → ${winner}`);
+      updateJobsTable();
+      delete pendingJobs[jobId];
     }
-  }
 
-  if (winner) {
-    client.publish(`jobs/${jobId}/status`, JSON.stringify({
-      job: jobId,
-      driver: winner,
-      status: 'allocated',
-      ts: Date.now()
-    }));
-  } else {
-    if (visibleJobs[jobId]) visibleJobs[jobId].status = 'no_bids';
-    log(`⏰ ${jobId}: no valid bids`);
-  }
+    // === JOB TABLE ===
+    function updateJobsTable() {
+      el.jobsTable.innerHTML = '';
+      Object.entries(visibleJobs).forEach(([id, j]) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${id}</td><td>${j.customerName}</td><td>${j.customerPhone}</td><td>${j.driver || '-'}</td><td>${j.status}</td>`;
+        el.jobsTable.appendChild(tr);
+      });
+    }
 
-  delete pendingJobs[jobId];
-  updateJobsTable();
-  localStorage.setItem('visibleJobs', JSON.stringify(visibleJobs));
-}
+    // === SIMULATION ===
+    function toggleSimDrivers() {
+      simActive = !simActive;
+      if (simActive) simLoop();
+    }
+    function simLoop() {
+      if (!simActive) return;
+      for (let i=1; i<=3; i++) {
+        const id = `driver-${i}`;
+        const lat = PUB_COORDS.lat + (Math.random()-0.5)*0.004;
+        const lng = PUB_COORDS.lng + (Math.random()-0.5)*0.004;
+        if (client && client.connected)
+          client.publish(`drivers/${id}/location`, JSON.stringify({ lat, lng }));
+      }
+      setTimeout(simLoop, 3000);
+    }
 
-// === SEND ORDER ===
-function sendOrder() {
-  const name = el.customerName.value.trim();
-  const phone = el.customerPhone.value.trim();
-  if (!name || !phone) {
-    alert("Enter both name and phone");
-    return;
-  }
+    // === PWA ===
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('service-worker.js');
+      logMsg('📱 Service worker registered');
+    }
 
-  const jobId = 'job-' + Math.random().toString(36).substr(2, 8);
-  if (visibleJobs[jobId]) return;
+    // === LOG UI ===
+    el.logButton.onclick = () => el.logOverlay.style.display = 'flex';
+    el.closeLog.onclick = () => el.logOverlay.style.display = 'none';
 
-  const job = {
-    job: jobId,
-    pub: PUB_ID,
-    pubName: PUB_NAME,
-    locationName: LOCATION_NAME,
-    customerName: name,
-    customerPhone: phone,
-    lat: PUB_COORDS.lat,
-    lng: PUB_COORDS.lng,
-    ts: Date.now(),
-    expiresAt: Date.now() + BIDDING_WINDOW_MS,
-    status: 'bidding',
-    driver: '-'
-  };
-
-  visibleJobs[jobId] = job;
-  localStorage.setItem('visibleJobs', JSON.stringify(visibleJobs));
-  updateJobsTable();
-
-  if (client && client.connected) {
-    client.publish(`pubs/requests/${PUB_ID}`, JSON.stringify(job));
-    log(`🚕 Job ${jobId} sent to drivers`);
-    setTimeout(() => finalizeBidding(jobId), BIDDING_WINDOW_MS);
-  } else {
-    alert("MQTT not connected");
-  }
-
-  el.customerName.value = '';
-  el.customerPhone.value = '';
-}
-
-// === JOB TABLE ===
-function updateJobsTable() {
-  el.jobsTable.innerHTML = '';
-  Object.entries(visibleJobs).forEach(([id, j]) => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${id}</td>
-      <td>${j.customerName || '-'}</td>
-      <td>${j.customerPhone || '-'}</td>
-      <td>${j.driver || '-'}</td>
-      <td>${j.status}</td>
-    `;
-    el.jobsTable.appendChild(tr);
-  });
-}
-
-// === INIT ===
-el.orderBtn.onclick = sendOrder;
-connectMQTT();
-updateJobsTable();
-</script>
+    el.orderBtn.onclick = sendOrder;
+    connectMQTT();
+    updateJobsTable();
+    el.logContent.textContent = logText;
+  </script>
 </body>
 </html>
