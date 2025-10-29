@@ -264,11 +264,24 @@ async function sendPushToDriver(driverId, fcmToken, jobId, reason) {
   }
 }
 
+// === SAFE JSON PARSING ===
+function safeParseJson(key, fallback) {
+  const item = localStorage.getItem(key);
+  if (item === null || item === '') return fallback;
+  try {
+    return JSON.parse(item);
+  } catch (e) {
+    console.warn(`Invalid JSON in localStorage.${key}:`, item);
+    localStorage.removeItem(key);
+    return fallback;
+  }
+}
+
 // === STATE ===
 const drivers = {};
 const pendingJobs = {};
-let visibleJobs = JSON.parse(localStorage.getItem('visibleJobs') || '{}');
-let allowedDrivers = JSON.parse(localStorage.getItem('allowedDrivers') || []);
+let visibleJobs = safeParseJson('visibleJobs', {});
+let allowedDrivers = safeParseJson('allowedDrivers', []);
 let debugAllowAll = false;
 let simActive = false;
 
@@ -447,7 +460,7 @@ function sendOrder() {
   if (!name) return alert("Enter customer name");
   if (!phone) return alert("Enter customer phone");
 
-  const jobId = 'job-' + Math.random().toString(36).substr(2, 8);
+  const jobId = 'job-' + Math.random().toString(36).substr(2, 4); // short ID
   const job = {
     job: jobId,
     pubName: PUB_NAME,
@@ -468,7 +481,9 @@ function sendOrder() {
     timeoutId: setTimeout(() => finalizeBidding(jobId), BIDDING_WINDOW_MS)
   };
 
-  visibleJobs[jobId] = job;
+  // Insert at top for latest-on-top
+  visibleJobs = { [jobId]: job, ...visibleJobs };
+
   localStorage.setItem('visibleJobs', JSON.stringify(visibleJobs));
   updateJobsTable();
 
@@ -493,7 +508,7 @@ function sendOrder() {
     
     logMsg('📤 Sent job ' + jobId);
   } else {
-    const offlineQueue = JSON.parse(localStorage.getItem('offlineQueue') || '[]');
+    const offlineQueue = safeParseJson('offlineQueue', []);
     offlineQueue.push(job);
     localStorage.setItem('offlineQueue', JSON.stringify(offlineQueue));
     logMsg('📦 Stored offline job ' + jobId);
@@ -501,7 +516,7 @@ function sendOrder() {
 }
 
 function resendOfflineJobs() {
-  const offlineQueue = JSON.parse(localStorage.getItem('offlineQueue') || '[]');
+  const offlineQueue = safeParseJson('offlineQueue', []);
   if (offlineQueue.length === 0) return;
   offlineQueue.forEach(j => {
     client.publish(`pubs/requests/${PUB_ID}`, JSON.stringify(j));
