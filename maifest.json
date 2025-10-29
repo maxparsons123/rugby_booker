@@ -5,9 +5,17 @@
   "display": "standalone",
   "background_color": "#f7fafc",
   "theme_color": "#1f6feb",
-  "description": "Taxi dispatcher app for Coventry Rugby Club, Butts Park Arena",
+  "description": "Taxi dispatch PWA for Coventry Rugby — Butts Park Arena",
   "icons": [
-    { "src": "https://cdn-icons-png.flaticon.com/512/296/296216.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "https://cdn-icons-png.flaticon.com/512/296/296216.png", "sizes": "512x512", "type": "image/png" }
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
   ]
 }
