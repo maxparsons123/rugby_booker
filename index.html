@@ -33,7 +33,6 @@ footer{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:
 .admin-panel{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:#fff;padding:12px;border-radius:12px;box-shadow:0 6px 16px rgba(0,0,0,0.1);z-index:1000;display:none;width:300px;}
 .admin-panel h3{margin:0 0 10px 0;font-size:16px;}
 .admin-panel .close-btn{float:right;cursor:pointer;color:#555;}
-.log{font-family:monospace;font-size:12px;padding:8px;margin:0;background:#fff;border:1px solid #eee;border-radius:8px;height:120px;overflow:auto;white-space:pre-wrap;}
 @media(max-width:900px){.main{flex-direction:column;}.panel{width:100%;}}
 </style>
 </head>
@@ -48,8 +47,7 @@ footer{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:
     </div>
   </div>
   <div class="tablet-info">
-    <div id="pubName"></div>
-    <div id="pubCoords" class="small"></div>
+    <button class="small-btn" id="logBtn">View Log</button>
     <button class="small-btn" id="adminBtn">Admin Panel</button>
   </div>
 </header>
@@ -84,8 +82,6 @@ footer{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:
       <div style="font-weight:700;margin-bottom:6px;">Current Jobs</div>
       <table id="jobsTable"><thead><tr><th>Job ID</th><th>Name</th><th>Phone</th><th>Driver</th><th>Status</th></tr></thead><tbody></tbody></table>
     </div>
-
-    <div><div style="font-weight:700;margin-bottom:6px;">Activity Log</div><pre class="log" id="log"></pre></div>
   </div>
 </div>
 
@@ -111,34 +107,36 @@ footer{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
 <script>
-// === CONFIG ===
 const PUB_ID='coventry-rugby-butts-park';
 const PUB_NAME='Coventry Rugby — Butts Park Arena';
 const PUB_COORDS={lat:52.407234,lng:-1.525504};
 const CLOUD_FUNCTION_URL='https://europe-west2-cabunite.cloudfunctions.net/sendJobAlertHttp';
 const BIDDING_WINDOW_MS=60_000;
 
-// === STATE ===
 const drivers={},pendingJobs={},offlineQueue=JSON.parse(localStorage.getItem('offlineQueue')||'[]');
 let visibleJobs=JSON.parse(localStorage.getItem('visibleJobs')||'{}');
 let allowedDrivers=JSON.parse(localStorage.getItem('allowedDrivers'))||[],debugAllowAll=false,simActive=false;
 
-// === DOM ===
 const el={
-  pubName:pubName,pubCoords:pubCoords,connectionStatus:connectionStatus,log:log,
+  pubName:pubName,pubCoords:pubCoords,connectionStatus:connectionStatus,
   driverList:driverList,customerName:customerName,customerPhone:customerPhone,
   orderBtn:orderBtn,simulateBtn:simulateBtn,jobsTable:document.querySelector("#jobsTable tbody"),
   adminPanel:adminPanel,closeAdmin:closeAdmin,adminBtn:adminBtn,adminDriverId:adminDriverId,
-  addDriverBtn:addDriverBtn,removeDriverBtn:removeDriverBtn,allowAllBtn:allowAllBtn,allowedDriversList:allowedDriversList
+  addDriverBtn:addDriverBtn,removeDriverBtn:removeDriverBtn,allowAllBtn:allowAllBtn,
+  allowedDriversList:allowedDriversList,logBtn:logBtn
 };
-const logMsg=msg=>{const ts=new Date().toLocaleTimeString();el.log.textContent=`[${ts}] ${msg}\n`+el.log.textContent;};
+const logMsg=msg=>{
+  const ts=new Date().toLocaleTimeString();
+  const entry=`[${ts}] ${msg}\n`;
+  const logs=localStorage.getItem('activityLog')||'';
+  localStorage.setItem('activityLog',entry+logs);
+  console.log(entry);
+};
 
-// === MAP ===
 const map=L.map('map').setView([PUB_COORDS.lat,PUB_COORDS.lng],15);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 L.marker([PUB_COORDS.lat,PUB_COORDS.lng]).addTo(map).bindPopup(PUB_NAME);
 
-// === MQTT ===
 let client=null;
 function connectMQTT(){
   el.connectionStatus.textContent='MQTT: connecting...';
@@ -147,14 +145,12 @@ function connectMQTT(){
   client.on('message',(t,m)=>{try{const msg=JSON.parse(m.toString());if(t.endsWith('/location'))updateDriver(t.split('/')[1],msg.lat,msg.lng,msg);}catch(e){console.warn(e);}});
 }
 
-// === DRIVER MANAGEMENT ===
 const distanceMeters=(a,b)=>{const R=6371000;const toRad=x=>x*Math.PI/180;const φ1=toRad(a.lat),φ2=toRad(b.lat);const Δφ=toRad(b.lat-a.lat),Δλ=toRad(b.lng-a.lng);const a_=Math.sin(Δφ/2)**2+Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;return R*2*Math.atan2(Math.sqrt(a_),Math.sqrt(1-a_));};
 function updateDriver(id,lat,lng,meta={}){if(!id)return;if(!drivers[id]?.marker){drivers[id]={lat,lng,data:meta,marker:L.marker([lat,lng]).addTo(map)};}else{drivers[id].marker.setLatLng([lat,lng]);drivers[id].lat=lat;drivers[id].lng=lng;}refreshDriverList();}
-function refreshDriverList(){el.driverList.innerHTML='';Object.entries(drivers).forEach(([id,d])=>{const dist=distanceMeters(d,PUB_COORDS);const row=document.createElement('div');row.className='driver-item';row.innerHTML=`<div><b>${id}</b><div class="small">${d.data?.status||'idle'}</div></div><div>${dist<1000?dist.toFixed(0)+'m':(dist/1000).toFixed(1)+'km'}</div>`;el.driverList.appendChild(row);});}
+function refreshDriverList(){driverList.innerHTML='';Object.entries(drivers).forEach(([id,d])=>{const dist=distanceMeters(d,PUB_COORDS);const row=document.createElement('div');row.className='driver-item';row.innerHTML=`<div><b>${id}</b><div class="small">${d.data?.status||'idle'}</div></div><div>${dist<1000?dist.toFixed(0)+'m':(dist/1000).toFixed(1)+'km'}</div>`;driverList.appendChild(row);});}
 
-// === JOB MANAGEMENT ===
 function sendOrder(){
-  const phone=el.customerPhone.value.trim(), name=el.customerName.value.trim();
+  const phone=customerPhone.value.trim(), name=customerName.value.trim();
   if(!name)return alert("Enter customer name");
   if(!phone)return alert("Enter customer phone");
   const jobId='job-'+Math.random().toString(36).substr(2,8);
@@ -162,51 +158,27 @@ function sendOrder(){
   visibleJobs[jobId]=job;
   localStorage.setItem('visibleJobs',JSON.stringify(visibleJobs));
   updateJobsTable();
-  if(client&&client.connected){
-    client.publish(`pubs/requests/${PUB_ID}`,JSON.stringify(job));
-    logMsg('📤 Job sent: '+jobId);
-  }else{
-    offlineQueue.push(job);
-    localStorage.setItem('offlineQueue',JSON.stringify(offlineQueue));
-    logMsg('📦 Stored offline: '+jobId);
-  }
-  el.customerName.value='';el.customerPhone.value='';
+  if(client&&client.connected){client.publish(`pubs/requests/${PUB_ID}`,JSON.stringify(job));logMsg('📤 Job sent: '+jobId);}else{offlineQueue.push(job);localStorage.setItem('offlineQueue',JSON.stringify(offlineQueue));logMsg('📦 Stored offline: '+jobId);}
+  customerName.value='';customerPhone.value='';
 }
-function resendOfflineJobs(){
-  if(offlineQueue.length===0)return;
-  offlineQueue.forEach(j=>{client.publish(`pubs/requests/${PUB_ID}`,JSON.stringify(j));logMsg('☁️ Resent offline job: '+j.job);});
-  offlineQueue.length=0;localStorage.setItem('offlineQueue','[]');
-}
-function updateJobsTable(){
-  el.jobsTable.innerHTML='';
-  Object.entries(visibleJobs).forEach(([id,j])=>{
-    const tr=document.createElement('tr');
-    tr.innerHTML=`<td>${id}</td><td>${j.name}</td><td>${j.phone}</td><td>${j.driver||'-'}</td><td>${j.status}</td>`;
-    el.jobsTable.appendChild(tr);
-  });
-}
+function resendOfflineJobs(){if(offlineQueue.length===0)return;offlineQueue.forEach(j=>{client.publish(`pubs/requests/${PUB_ID}`,JSON.stringify(j));logMsg('☁️ Resent offline job: '+j.job);});offlineQueue.length=0;localStorage.setItem('offlineQueue','[]');}
+function updateJobsTable(){jobsTable.innerHTML='';Object.entries(visibleJobs).forEach(([id,j])=>{const tr=document.createElement('tr');tr.innerHTML=`<td>${id}</td><td>${j.name}</td><td>${j.phone}</td><td>${j.driver||'-'}</td><td>${j.status}</td>`;jobsTable.appendChild(tr);});}
 
-// === SIMULATION ===
-function toggleSimDrivers(){simActive=!simActive;el.simulateBtn.innerText=simActive?'Stop Sim Drivers':'Toggle Sim Drivers';if(simActive)simLoop();}
+function toggleSimDrivers(){simActive=!simActive;simulateBtn.innerText=simActive?'Stop Sim Drivers':'Toggle Sim Drivers';if(simActive)simLoop();}
 function simLoop(){if(!simActive)return;for(let i=1;i<=3;i++){const id=`driver-${i}`;const lat=PUB_COORDS.lat+(Math.random()-0.5)*0.004;const lng=PUB_COORDS.lng+(Math.random()-0.5)*0.004;if(client&&client.connected)client.publish(`drivers/${id}/location`,JSON.stringify({lat,lng,status:'idle'}));updateDriver(id,lat,lng,{status:'idle'});}setTimeout(simLoop,3000);}
 
-// === ADMIN PANEL ===
-function refreshAllowedDriversList(){el.allowedDriversList.innerHTML=allowedDrivers.map(d=>`<li>${d}</li>`).join('');localStorage.setItem('allowedDrivers',JSON.stringify(allowedDrivers));}
-el.adminBtn.onclick=()=>el.adminPanel.style.display='block';
-el.closeAdmin.onclick=()=>el.adminPanel.style.display='none';
-el.addDriverBtn.onclick=()=>{const d=el.adminDriverId.value.trim();if(d&&!allowedDrivers.includes(d)){allowedDrivers.push(d);refreshAllowedDriversList();}};
-el.removeDriverBtn.onclick=()=>{const d=el.adminDriverId.value.trim();allowedDrivers=allowedDrivers.filter(x=>x!==d);refreshAllowedDriversList();};
-el.allowAllBtn.onclick=()=>{debugAllowAll=!debugAllowAll;el.allowAllBtn.innerText=debugAllowAll?'Debug: Disallow All':'Debug: Allow All';logMsg('Debug allow all = '+debugAllowAll);};
+function refreshAllowedDriversList(){allowedDriversList.innerHTML=allowedDrivers.map(d=>`<li>${d}</li>`).join('');localStorage.setItem('allowedDrivers',JSON.stringify(allowedDrivers));}
+adminBtn.onclick=()=>adminPanel.style.display='block';
+closeAdmin.onclick=()=>adminPanel.style.display='none';
+addDriverBtn.onclick=()=>{const d=adminDriverId.value.trim();if(d&&!allowedDrivers.includes(d)){allowedDrivers.push(d);refreshAllowedDriversList();}};
+removeDriverBtn.onclick=()=>{const d=adminDriverId.value.trim();allowedDrivers=allowedDrivers.filter(x=>x!==d);refreshAllowedDriversList();};
+allowAllBtn.onclick=()=>{debugAllowAll=!debugAllowAll;allowAllBtn.innerText=debugAllowAll?'Debug: Disallow All':'Debug: Allow All';logMsg('Debug allow all = '+debugAllowAll);};
+logBtn.onclick=()=>window.open('log.html','_blank');
 
-// === INIT ===
-el.pubName.textContent=PUB_NAME;
-el.pubCoords.textContent=`${PUB_COORDS.lat.toFixed(6)}, ${PUB_COORDS.lng.toFixed(6)}`;
-el.orderBtn.onclick=sendOrder;
-el.simulateBtn.onclick=toggleSimDrivers;
-updateJobsTable();
-connectMQTT();
-refreshAllowedDriversList();
-if('serviceWorker' in navigator){navigator.serviceWorker.register('service-worker.js').then(()=>console.log('Service Worker registered'));}
+pubName.textContent=PUB_NAME;pubCoords.textContent=`${PUB_COORDS.lat.toFixed(6)}, ${PUB_COORDS.lng.toFixed(6)}`;
+orderBtn.onclick=sendOrder;simulateBtn.onclick=toggleSimDrivers;
+updateJobsTable();connectMQTT();refreshAllowedDriversList();
+if('serviceWorker' in navigator){navigator.serviceWorker.register('service-worker.js');}
 </script>
 </body>
 </html>
