@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Black Cab Unite — Coventry Rugby (Butts Park Arena)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#1f6feb" />
+<link rel="manifest" href="manifest.json" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+:root{--accent:#1f6feb;--accent-2:#ff7b00;--bg:#f7fafc;--card:#ffffff;}
+html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial;background:var(--bg);color:#111;}
+.container{display:flex;flex-direction:column;height:100vh;gap:12px;padding:12px;box-sizing:border-box;}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+.brand{display:flex;align-items:center;gap:10px;}
+.brand h1{margin:0;font-size:20px;letter-spacing:0.5px;}
+.tablet-info{text-align:right;font-size:13px;color:#444;}
+.main{display:flex;gap:12px;flex:1;min-height:0;}
+#map{flex:1;border-radius:12px;box-shadow:0 6px 16px rgba(0,0,0,0.08);}
+.panel{width:360px;min-width:260px;background:var(--card);border-radius:12px;padding:12px;box-shadow:0 6px 16px rgba(0,0,0,0.06);display:flex;flex-direction:column;gap:12px;overflow:auto;}
+.order-btn{background:var(--accent);color:white;border:none;padding:18px;font-size:18px;border-radius:10px;cursor:pointer;width:100%;box-shadow:0 6px 12px rgba(31,111,235,0.18);}
+.order-btn:active{transform:translateY(1px);}
+.small{font-size:13px;color:#666;}
+.status{padding:10px;border-radius:8px;background:#f2f6ff;color:#08306b;font-weight:600;}
+.driver-list{display:flex;flex-direction:column;gap:8px;max-height:140px;overflow:auto;}
+.driver-item{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px;border-radius:8px;background:#fff;border:1px solid #f0f0f0;}
+.small-btn{border:1px solid #ddd;background:#fff;padding:6px 10px;border-radius:8px;cursor:pointer;font-size:13px;}
+input[type=tel],input[type=text]{width:100%;padding:8px;border-radius:8px;border:1px solid #ccc;margin-bottom:8px;box-sizing:border-box;}
+table{width:100%;border-collapse:collapse;}
+th,td{padding:6px;text-align:left;border-bottom:1px solid #eee;font-size:13px;}
+thead{background:#f0f0f0;}
+footer{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:#666;}
+.admin-panel{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:#fff;padding:12px;border-radius:12px;box-shadow:0 6px 16px rgba(0,0,0,0.1);z-index:1000;display:none;width:300px;}
+.admin-panel h3{margin:0 0 10px 0;font-size:16px;}
+.admin-panel .close-btn{float:right;cursor:pointer;color:#555;}
+.log{font-family:monospace;font-size:12px;padding:8px;margin:0;background:#fff;border:1px solid #eee;border-radius:8px;height:120px;overflow:auto;white-space:pre-wrap;}
+@media(max-width:900px){.main{flex-direction:column;}.panel{width:100%;}}
+</style>
+</head>
+<body>
+<div class="container">
+<header>
+  <div class="brand">
+    <div style="width:44px;height:44px;border-radius:8px;background:linear-gradient(135deg,#004400,#228B22);display:flex;align-items:center;justify-content:center;color:white;font-weight:bold;">🏉</div>
+    <div>
+      <h1>Black Cab Unite — Coventry Rugby</h1>
+      <div class="small">Butts Park Arena</div>
+    </div>
+  </div>
+  <div class="tablet-info">
+    <div id="pubName"></div>
+    <div id="pubCoords" class="small"></div>
+    <button class="small-btn" id="adminBtn">Admin Panel</button>
+  </div>
+</header>
+
+<div class="main">
+  <div id="map"></div>
+  <div class="panel">
+    <div class="status" id="connectionStatus">MQTT: disconnected</div>
+
+    <div style="display:flex;gap:8px;">
+      <div style="flex:1;">
+        <label><strong>Name:</strong></label>
+        <input type="text" id="customerName" placeholder="Customer name" />
+      </div>
+      <div style="flex:1;">
+        <label><strong>Phone:</strong></label>
+        <input type="tel" id="customerPhone" placeholder="+44 7123 456789" />
+      </div>
+    </div>
+
+    <button class="order-btn" id="orderBtn">ORDER TAXI</button>
+
+    <div>
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <div style="font-weight:700">Nearby Drivers</div>
+        <button class="small-btn" id="simulateBtn">Toggle Sim Drivers</button>
+      </div>
+      <div class="driver-list" id="driverList"></div>
+    </div>
+
+    <div style="margin-top:12px;">
+      <div style="font-weight:700;margin-bottom:6px;">Current Jobs</div>
+      <table id="jobsTable"><thead><tr><th>Job ID</th><th>Name</th><th>Phone</th><th>Driver</th><th>Status</th></tr></thead><tbody></tbody></table>
+    </div>
+
+    <div><div style="font-weight:700;margin-bottom:6px;">Activity Log</div><pre class="log" id="log"></pre></div>
+  </div>
+</div>
+
+<footer>
+  <div>Black Cab Unite — Coventry Rugby Club</div>
+  <div>Topics: pubs/requests/{pub_id} • drivers/tokens • jobs/+/status</div>
+</footer>
+
+<!-- Admin Panel -->
+<div class="admin-panel" id="adminPanel">
+  <span class="close-btn" id="closeAdmin">&times;</span>
+  <h3>Admin Panel</h3>
+  <div>
+    <label>Driver ID:</label>
+    <input type="text" id="adminDriverId" placeholder="driver-01" />
+    <button class="small-btn" id="addDriverBtn">Add</button>
+    <button class="small-btn" id="removeDriverBtn">Remove</button>
+  </div>
+  <div style="margin-top:8px;"><button class="small-btn" id="allowAllBtn">Debug: Allow All</button></div>
+  <div style="margin-top:12px;"><strong>Allowed:</strong><ul id="allowedDriversList"></ul></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+<script>
+// === CONFIG ===
+const PUB_ID='coventry-rugby-butts-park';
+const PUB_NAME='Coventry Rugby — Butts Park Arena';
+const PUB_COORDS={lat:52.407234,lng:-1.525504};
+const CLOUD_FUNCTION_URL='https://europe-west2-cabunite.cloudfunctions.net/sendJobAlertHttp';
+const BIDDING_WINDOW_MS=60_000;
+
+// === STATE ===
+const drivers={},pendingJobs={},offlineQueue=JSON.parse(localStorage.getItem('offlineQueue')||'[]');
+let visibleJobs=JSON.parse(localStorage.getItem('visibleJobs')||'{}');
+let allowedDrivers=JSON.parse(localStorage.getItem('allowedDrivers'))||[],debugAllowAll=false,simActive=false;
+
+// === DOM ===
+const el={
+  pubName:pubName,pubCoords:pubCoords,connectionStatus:connectionStatus,log:log,
+  driverList:driverList,customerName:customerName,customerPhone:customerPhone,
+  orderBtn:orderBtn,simulateBtn:simulateBtn,jobsTable:document.querySelector("#jobsTable tbody"),
+  adminPanel:adminPanel,closeAdmin:closeAdmin,adminBtn:adminBtn,adminDriverId:adminDriverId,
+  addDriverBtn:addDriverBtn,removeDriverBtn:removeDriverBtn,allowAllBtn:allowAllBtn,allowedDriversList:allowedDriversList
+};
+const logMsg=msg=>{const ts=new Date().toLocaleTimeString();el.log.textContent=`[${ts}] ${msg}\n`+el.log.textContent;};
+
+// === MAP ===
+const map=L.map('map').setView([PUB_COORDS.lat,PUB_COORDS.lng],15);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+L.marker([PUB_COORDS.lat,PUB_COORDS.lng]).addTo(map).bindPopup(PUB_NAME);
+
+// === MQTT ===
+let client=null;
+function connectMQTT(){
+  el.connectionStatus.textContent='MQTT: connecting...';
+  client=mqtt.connect('wss://broker.hivemq.com:8884/mqtt',{connectTimeout:4000,reconnectPeriod:1000});
+  client.on('connect',()=>{el.connectionStatus.textContent='MQTT: connected';logMsg('✅ Connected to MQTT');client.subscribe(`drivers/+/location`);client.subscribe('drivers/tokens');resendOfflineJobs();});
+  client.on('message',(t,m)=>{try{const msg=JSON.parse(m.toString());if(t.endsWith('/location'))updateDriver(t.split('/')[1],msg.lat,msg.lng,msg);}catch(e){console.warn(e);}});
+}
+
+// === DRIVER MANAGEMENT ===
+const distanceMeters=(a,b)=>{const R=6371000;const toRad=x=>x*Math.PI/180;const φ1=toRad(a.lat),φ2=toRad(b.lat);const Δφ=toRad(b.lat-a.lat),Δλ=toRad(b.lng-a.lng);const a_=Math.sin(Δφ/2)**2+Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;return R*2*Math.atan2(Math.sqrt(a_),Math.sqrt(1-a_));};
+function updateDriver(id,lat,lng,meta={}){if(!id)return;if(!drivers[id]?.marker){drivers[id]={lat,lng,data:meta,marker:L.marker([lat,lng]).addTo(map)};}else{drivers[id].marker.setLatLng([lat,lng]);drivers[id].lat=lat;drivers[id].lng=lng;}refreshDriverList();}
+function refreshDriverList(){el.driverList.innerHTML='';Object.entries(drivers).forEach(([id,d])=>{const dist=distanceMeters(d,PUB_COORDS);const row=document.createElement('div');row.className='driver-item';row.innerHTML=`<div><b>${id}</b><div class="small">${d.data?.status||'idle'}</div></div><div>${dist<1000?dist.toFixed(0)+'m':(dist/1000).toFixed(1)+'km'}</div>`;el.driverList.appendChild(row);});}
+
+// === JOB MANAGEMENT ===
+function sendOrder(){
+  const phone=el.customerPhone.value.trim(), name=el.customerName.value.trim();
+  if(!name)return alert("Enter customer name");
+  if(!phone)return alert("Enter customer phone");
+  const jobId='job-'+Math.random().toString(36).substr(2,8);
+  const job={job:jobId,name,phone,ts:Date.now(),status:'queued',lat:PUB_COORDS.lat,lng:PUB_COORDS.lng};
+  visibleJobs[jobId]=job;
+  localStorage.setItem('visibleJobs',JSON.stringify(visibleJobs));
+  updateJobsTable();
+  if(client&&client.connected){
+    client.publish(`pubs/requests/${PUB_ID}`,JSON.stringify(job));
+    logMsg('📤 Job sent: '+jobId);
+  }else{
+    offlineQueue.push(job);
+    localStorage.setItem('offlineQueue',JSON.stringify(offlineQueue));
+    logMsg('📦 Stored offline: '+jobId);
+  }
+  el.customerName.value='';el.customerPhone.value='';
+}
+function resendOfflineJobs(){
+  if(offlineQueue.length===0)return;
+  offlineQueue.forEach(j=>{client.publish(`pubs/requests/${PUB_ID}`,JSON.stringify(j));logMsg('☁️ Resent offline job: '+j.job);});
+  offlineQueue.length=0;localStorage.setItem('offlineQueue','[]');
+}
+function updateJobsTable(){
+  el.jobsTable.innerHTML='';
+  Object.entries(visibleJobs).forEach(([id,j])=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${id}</td><td>${j.name}</td><td>${j.phone}</td><td>${j.driver||'-'}</td><td>${j.status}</td>`;
+    el.jobsTable.appendChild(tr);
+  });
+}
+
+// === SIMULATION ===
+function toggleSimDrivers(){simActive=!simActive;el.simulateBtn.innerText=simActive?'Stop Sim Drivers':'Toggle Sim Drivers';if(simActive)simLoop();}
+function simLoop(){if(!simActive)return;for(let i=1;i<=3;i++){const id=`driver-${i}`;const lat=PUB_COORDS.lat+(Math.random()-0.5)*0.004;const lng=PUB_COORDS.lng+(Math.random()-0.5)*0.004;if(client&&client.connected)client.publish(`drivers/${id}/location`,JSON.stringify({lat,lng,status:'idle'}));updateDriver(id,lat,lng,{status:'idle'});}setTimeout(simLoop,3000);}
+
+// === ADMIN PANEL ===
+function refreshAllowedDriversList(){el.allowedDriversList.innerHTML=allowedDrivers.map(d=>`<li>${d}</li>`).join('');localStorage.setItem('allowedDrivers',JSON.stringify(allowedDrivers));}
+el.adminBtn.onclick=()=>el.adminPanel.style.display='block';
+el.closeAdmin.onclick=()=>el.adminPanel.style.display='none';
+el.addDriverBtn.onclick=()=>{const d=el.adminDriverId.value.trim();if(d&&!allowedDrivers.includes(d)){allowedDrivers.push(d);refreshAllowedDriversList();}};
+el.removeDriverBtn.onclick=()=>{const d=el.adminDriverId.value.trim();allowedDrivers=allowedDrivers.filter(x=>x!==d);refreshAllowedDriversList();};
+el.allowAllBtn.onclick=()=>{debugAllowAll=!debugAllowAll;el.allowAllBtn.innerText=debugAllowAll?'Debug: Disallow All':'Debug: Allow All';logMsg('Debug allow all = '+debugAllowAll);};
+
+// === INIT ===
+el.pubName.textContent=PUB_NAME;
+el.pubCoords.textContent=`${PUB_COORDS.lat.toFixed(6)}, ${PUB_COORDS.lng.toFixed(6)}`;
+el.orderBtn.onclick=sendOrder;
+el.simulateBtn.onclick=toggleSimDrivers;
+updateJobsTable();
+connectMQTT();
+refreshAllowedDriversList();
+if('serviceWorker' in navigator){navigator.serviceWorker.register('service-worker.js').then(()=>console.log('Service Worker registered'));}
+</script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "name": "Black Cab Unite — Coventry Rugby",
+  "short_name": "BCU Rugby",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f7fafc",
+  "theme_color": "#1f6feb",
+  "description": "Taxi dispatcher app for Coventry Rugby Club, Butts Park Arena",
+  "icons": [
+    { "src": "https://cdn-icons-png.flaticon.com/512/296/296216.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "https://cdn-icons-png.flaticon.com/512/296/296216.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
