@@ -1,401 +1,515 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <title>Black Cab Unite — Coventry Rugby</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="manifest" href="manifest.json" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-  <style>
-    :root {
-      --accent: #1f6feb;
-      --bg: #f7fafc;
-      --card: #ffffff;
-    }
-    html, body {
-      height: 100%;
-      margin: 0;
-      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial;
-      background: var(--bg);
-      color: #111;
-    }
-    .container {
-      display: flex;
-      flex-direction: column;
-      height: 100vh;
-      gap: 12px;
-      padding: 12px;
-      box-sizing: border-box;
-    }
-    header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 12px;
-    }
-    .main {
-      display: flex;
-      flex: 1;
-      gap: 12px;
-      min-height: 0;
-    }
-    #map {
-      flex: 1;
-      border-radius: 12px;
-      box-shadow: 0 6px 16px rgba(0,0,0,0.08);
-    }
-    .panel {
-      width: 380px;
-      min-width: 260px;
-      background: var(--card);
-      border-radius: 12px;
-      padding: 12px;
-      box-shadow: 0 6px 16px rgba(0,0,0,0.06);
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      overflow: hidden;
-    }
-    .order-btn {
-      background: var(--accent);
-      color: white;
-      border: none;
-      padding: 16px;
-      font-size: 18px;
-      border-radius: 10px;
-      cursor: pointer;
-      width: 100%;
-      box-shadow: 0 6px 12px rgba(31,111,235,0.18);
-    }
-    input[type=text], input[type=tel] {
-      width: 100%;
-      padding: 8px;
-      border-radius: 8px;
-      border: 1px solid #ccc;
-      margin-bottom: 8px;
-      box-sizing: border-box;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-    th, td {
-      padding: 6px;
-      text-align: left;
-      border-bottom: 1px solid #eee;
-      font-size: 13px;
-    }
-    thead { background: #f0f0f0; }
-    .status { padding:10px; border-radius:8px; background:#f2f6ff; color:#08306b; font-weight:600; text-align:center; }
-    footer { font-size:12px; color:#666; text-align:center; padding:8px; }
-
-    /* Scrollable jobs */
-    .jobs-scroll {
-      flex:1;
-      overflow-y:auto;
-      margin-top:8px;
-      border-top:1px solid #eee;
-      padding-top:6px;
-    }
-
-    /* Activity log overlay */
-    #logOverlay {
-      position: fixed;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
-      background: rgba(0,0,0,0.7);
-      display: none;
-      z-index: 2000;
-      justify-content: center;
-      align-items: center;
-    }
-    #logContent {
-      background: #fff;
-      width: 80%;
-      height: 70%;
-      border-radius: 12px;
-      padding: 12px;
-      box-shadow: 0 6px 16px rgba(0,0,0,0.2);
-      overflow: auto;
-      font-family: monospace;
-      font-size: 12px;
-    }
-    #closeLog {
-      position: absolute;
-      top: 12px;
-      right: 24px;
-      background: #fff;
-      border: none;
-      border-radius: 6px;
-      padding: 6px 10px;
-      cursor: pointer;
-    }
-    .small-btn {
-      border: 1px solid #ccc;
-      background: #fff;
-      padding: 6px 10px;
-      border-radius: 8px;
-      cursor: pointer;
-      font-size: 13px;
-    }
-  </style>
+<meta charset="utf-8" />
+<title>Black Cab Unite — Coventry Rugby (Butts Park Arena)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#1f6feb" />
+<link rel="manifest" href="manifest.json" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+:root{--accent:#1f6feb;--accent-2:#ff7b00;--bg:#f7fafc;--card:#ffffff;}
+html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial;background:var(--bg);color:#111;}
+.container{display:flex;flex-direction:column;height:100vh;gap:12px;padding:12px;box-sizing:border-box;}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+.brand{display:flex;align-items:center;gap:10px;}
+.brand h1{margin:0;font-size:20px;letter-spacing:0.5px;}
+.tablet-info{text-align:right;font-size:13px;color:#444;}
+.main{display:flex;gap:12px;flex:1;min-height:0;}
+#map{flex:1;border-radius:12px;box-shadow:0 6px 16px rgba(0,0,0,0.08);}
+.panel{
+  width:360px;
+  min-width:260px;
+  background:var(--card);
+  border-radius:12px;
+  box-shadow:0 6px 16px rgba(0,0,0,0.06);
+  display:flex;
+  flex-direction:column;
+  overflow:hidden; /* critical for scroll */
+}
+.panel-header{
+  padding:12px;
+  border-bottom:1px solid #eee;
+}
+.panel-scroll{
+  flex:1;
+  overflow-y:auto;
+  padding:12px;
+}
+.order-btn{
+  background:var(--accent);
+  color:white;
+  border:none;
+  padding:18px;
+  font-size:18px;
+  border-radius:10px;
+  cursor:pointer;
+  width:100%;
+  box-shadow:0 6px 12px rgba(31,111,235,0.18);
+  margin-bottom:16px;
+}
+.order-btn:active{transform:translateY(1px);}
+.small{font-size:13px;color:#666;}
+.status{padding:10px;border-radius:8px;background:#f2f6ff;color:#08306b;font-weight:600;}
+.driver-list{display:flex;flex-direction:column;gap:8px;max-height:140px;overflow:auto;}
+.driver-item{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px;border-radius:8px;background:#fff;border:1px solid #f0f0f0;}
+.small-btn{
+  border:1px solid #ddd;
+  background:#fff;
+  padding:6px 10px;
+  border-radius:8px;
+  cursor:pointer;
+  font-size:13px;
+}
+input[type=tel],input[type=text]{
+  width:100%;
+  padding:8px;
+  border-radius:8px;
+  border:1px solid #ccc;
+  margin-bottom:8px;
+  box-sizing:border-box;
+}
+table{width:100%;border-collapse:collapse;}
+th,td{padding:6px;text-align:left;border-bottom:1px solid #eee;font-size:13px;}
+thead{background:#f0f0f0;}
+footer{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:#666;}
+.admin-panel{
+  position:absolute;
+  top:10px;
+  left:50%;
+  transform:translateX(-50%);
+  background:#fff;
+  padding:12px;
+  border-radius:12px;
+  box-shadow:0 6px 16px rgba(0,0,0,0.1);
+  z-index:1000;
+  display:none;
+  width:300px;
+}
+.admin-panel h3{margin:0 0 10px 0;font-size:16px;}
+.admin-panel .close-btn{float:right;cursor:pointer;color:#555;}
+#logPanel{
+  position:fixed;
+  bottom:0;
+  left:0;
+  right:0;
+  background:#fff;
+  border-top:2px solid var(--accent);
+  box-shadow:0 -4px 16px rgba(0,0,0,0.2);
+  max-height:0;
+  overflow:hidden;
+  transition:max-height 0.4s ease;
+  padding:0 12px;
+}
+#logPanel.open{max-height:40vh;padding:12px;}
+#logOutput{
+  font-family:monospace;
+  font-size:12px;
+  white-space:pre-wrap;
+  background:#f9fafc;
+  padding:8px;
+  border-radius:8px;
+  height:100%;
+  overflow:auto;
+}
+@media(max-width:900px){
+  .main{flex-direction:column;}
+  .panel{width:100%;}
+}
+</style>
 </head>
 <body>
-  <div class="container">
-    <header>
-      <h2>🏉 Black Cab Unite — Coventry Rugby</h2>
-      <div>
-        <span id="connectionStatus" class="status">MQTT: disconnected</span>
-        <button id="logButton" class="small-btn">📋 View Log</button>
-      </div>
-    </header>
+<div class="container">
+<header>
+  <div class="brand">
+    <div style="width:44px;height:44px;border-radius:8px;background:linear-gradient(135deg,#004400,#228B22);display:flex;align-items:center;justify-content:center;color:white;font-weight:bold;">🏉</div>
+    <div>
+      <h1>Black Cab Unite — Coventry Rugby</h1>
+      <div class="small">Butts Park Arena</div>
+    </div>
+  </div>
+  <div class="tablet-info">
+    <button class="small-btn" id="logBtn">View Log</button>
+    <button class="small-btn" id="adminBtn">Admin Panel</button>
+  </div>
+</header>
 
-    <div class="main">
-      <div id="map"></div>
-      <div class="panel">
-        <div style="position:sticky; top:0; background:white; z-index:10;">
-          <div style="display:flex; gap:8px;">
-            <div style="flex:1;">
-              <label><strong>Name:</strong></label>
-              <input type="text" id="customerName" placeholder="Passenger name" />
-            </div>
-            <div style="flex:1;">
-              <label><strong>Phone:</strong></label>
-              <input type="tel" id="customerPhone" placeholder="+44 7123 456789" />
-            </div>
-          </div>
-          <button class="order-btn" id="orderBtn">ORDER TAXI</button>
+<div class="main">
+  <div id="map"></div>
+  <div class="panel">
+    <!-- Static Customer Info -->
+    <div class="panel-header">
+      <div style="display:flex;gap:8px;">
+        <div style="flex:1;">
+          <label><strong>Name:</strong></label>
+          <input type="text" id="customerName" placeholder="Customer name" />
         </div>
-
-        <div class="jobs-scroll">
-          <div style="font-weight:700;margin-bottom:6px;">Current Jobs</div>
-          <table id="jobsTable">
-            <thead><tr><th>Job ID</th><th>Name</th><th>Phone</th><th>Driver</th><th>Status</th></tr></thead>
-            <tbody></tbody>
-          </table>
+        <div style="flex:1;">
+          <label><strong>Phone:</strong></label>
+          <input type="tel" id="customerPhone" placeholder="+44 7123 456789" />
         </div>
       </div>
     </div>
-    <footer>Black Cab Unite — Coventry Rugby (Butts Park Arena)</footer>
+
+    <!-- Scrollable Content -->
+    <div class="panel-scroll">
+      <button class="order-btn" id="orderBtn">ORDER TAXI</button>
+      <div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+          <div style="font-weight:700">Nearby Drivers</div>
+          <button class="small-btn" id="simulateBtn">Toggle Sim Drivers</button>
+        </div>
+        <div class="driver-list" id="driverList"></div>
+      </div>
+      <div style="margin-top:12px;">
+        <div style="font-weight:700;margin-bottom:6px;">Current Jobs</div>
+        <table id="jobsTable">
+          <thead><tr><th>Job ID</th><th>Name</th><th>Phone</th><th>Driver</th><th>Status</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
   </div>
+</div>
 
-  <!-- Activity Log Overlay -->
-  <div id="logOverlay">
-    <button id="closeLog">✖ Close</button>
-    <div id="logContent"></div>
+<footer>
+  <div>Black Cab Unite — Coventry Rugby Club</div>
+  <div>Topics: pubs/requests/{pub_id} • drivers/tokens • jobs/+/status</div>
+</footer>
+
+<!-- Admin Panel -->
+<div class="admin-panel" id="adminPanel">
+  <span class="close-btn" id="closeAdmin">&times;</span>
+  <h3>Admin Panel</h3>
+  <div>
+    <label>Driver ID:</label>
+    <input type="text" id="adminDriverId" placeholder="driver-01" />
+    <button class="small-btn" id="addDriverBtn">Add</button>
+    <button class="small-btn" id="removeDriverBtn">Remove</button>
   </div>
+  <div style="margin-top:8px;"><button class="small-btn" id="allowAllBtn">Debug: Allow All</button></div>
+  <div style="margin-top:12px;"><strong>Allowed:</strong><ul id="allowedDriversList"></ul></div>
+</div>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
-  <script>
-    const PUB_ID = 'coventry-rugby-butts-park';
-    const PUB_NAME = 'Coventry Rugby — Butts Park Arena';
-    const PUB_COORDS = { lat: 52.407234, lng: -1.525504 };
-    const BIDDING_WINDOW_MS = 60_000;
+<!-- Slide-up Log Panel -->
+<div id="logPanel">
+  <h3 style="margin:0 0 8px 0;">📋 Activity Log</h3>
+  <div id="logOutput"></div>
+  <button class="small-btn" onclick="clearLog()">Clear Log</button>
+</div>
 
-    const el = {
-      connectionStatus: document.getElementById('connectionStatus'),
-      customerName: document.getElementById('customerName'),
-      customerPhone: document.getElementById('customerPhone'),
-      orderBtn: document.getElementById('orderBtn'),
-      jobsTable: document.querySelector('#jobsTable tbody'),
-      logButton: document.getElementById('logButton'),
-      logOverlay: document.getElementById('logOverlay'),
-      logContent: document.getElementById('logContent'),
-      closeLog: document.getElementById('closeLog')
-    };
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+<script>
+const PUB_ID='coventry-rugby-butts-park';
+const PUB_NAME='Coventry Rugby — Butts Park Arena';
+const PUB_COORDS={lat:52.407234,lng:-1.525504};
+const BIDDING_WINDOW_MS = 60_000; // 60 seconds
 
-    let client = null;
-    let visibleJobs = JSON.parse(localStorage.getItem('visibleJobs') || '{}');
-    let pendingJobs = {};
-    let offlineQueue = JSON.parse(localStorage.getItem('offlineQueue') || '[]');
-    let drivers = {};
-    let logText = localStorage.getItem('activityLog') || '';
-    let simActive = false;
+const drivers = {};
+const pendingJobs = {}; // { jobId: { bidCount, bids: { driverId: {lat,lng} }, timeoutId } }
+let visibleJobs = JSON.parse(localStorage.getItem('visibleJobs') || '{}');
+let allowedDrivers = JSON.parse(localStorage.getItem('allowedDrivers') || []);
+let debugAllowAll = false;
+let simActive = false;
 
-    // === LOGGING ===
-    function logMsg(msg) {
-      const ts = new Date().toLocaleTimeString();
-      logText = `[${ts}] ${msg}\n` + logText;
-      localStorage.setItem('activityLog', logText);
-      el.logContent.textContent = logText;
-    }
+// UI elements
+const el = {
+  connectionStatus: document.getElementById('connectionStatus'),
+  driverList: document.getElementById('driverList'),
+  customerName: document.getElementById('customerName'),
+  customerPhone: document.getElementById('customerPhone'),
+  orderBtn: document.getElementById('orderBtn'),
+  simulateBtn: document.getElementById('simulateBtn'),
+  jobsTable: document.querySelector("#jobsTable tbody"),
+  adminPanel: document.getElementById('adminPanel'),
+  closeAdmin: document.getElementById('closeAdmin'),
+  adminBtn: document.getElementById('adminBtn'),
+  adminDriverId: document.getElementById('adminDriverId'),
+  addDriverBtn: document.getElementById('addDriverBtn'),
+  removeDriverBtn: document.getElementById('removeDriverBtn'),
+  allowAllBtn: document.getElementById('allowAllBtn'),
+  allowedDriversList: document.getElementById('allowedDriversList'),
+  logBtn: document.getElementById('logBtn'),
+  logPanel: document.getElementById('logPanel'),
+  logOutput: document.getElementById('logOutput')
+};
 
-    // === MAP ===
-    const map = L.map('map').setView([PUB_COORDS.lat, PUB_COORDS.lng], 15);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-    L.marker([PUB_COORDS.lat, PUB_COORDS.lng]).addTo(map).bindPopup(PUB_NAME);
+// Logging
+function logMsg(msg){
+  const ts = new Date().toLocaleTimeString();
+  const entry = `[${ts}] ${msg}\n`;
+  const logs = (localStorage.getItem('activityLog') || '') + entry;
+  localStorage.setItem('activityLog', logs);
+  el.logOutput.textContent = logs;
+}
 
-    // === MQTT ===
-    function connectMQTT() {
-      el.connectionStatus.textContent = 'MQTT: connecting...';
-      client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt');
-      client.on('connect', () => {
-        el.connectionStatus.textContent = 'MQTT: connected';
-        logMsg('✅ Connected to MQTT');
-        client.subscribe('drivers/+/location');
-        client.subscribe('jobs/+/accept');
-        client.subscribe('jobs/+/status');
-        resendOfflineJobs();
-      });
+el.logBtn.onclick = () => el.logPanel.classList.toggle('open');
+function clearLog(){ localStorage.removeItem('activityLog'); el.logOutput.textContent = ''; }
 
-      client.on('message', (topic, message) => {
-        try {
-          const data = JSON.parse(message.toString());
-          if (topic.endsWith('/location')) {
-            const id = topic.split('/')[1];
-            updateDriver(id, data.lat, data.lng);
-          }
-          if (topic.endsWith('/accept')) {
-            const jobId = topic.split('/')[1];
-            const { driver, lat, lng } = data;
-            pendingJobs[jobId] = pendingJobs[jobId] || { bids: {} };
-            pendingJobs[jobId].bids[driver] = { lat, lng };
-            logMsg(`📨 Bid from ${driver} for ${jobId}`);
-          }
-          if (topic.endsWith('/status')) {
-            const jobId = topic.split('/')[1];
-            if (visibleJobs[jobId]) {
-              visibleJobs[jobId].status = data.status;
-              visibleJobs[jobId].driver = data.driver || visibleJobs[jobId].driver;
+// Map
+const map = L.map('map').setView([PUB_COORDS.lat, PUB_COORDS.lng], 15);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+L.marker([PUB_COORDS.lat, PUB_COORDS.lng]).addTo(map).bindPopup(PUB_NAME);
+
+// MQTT
+let client = null;
+function connectMQTT(){
+  const statusEl = document.createElement('div');
+  statusEl.className = 'status';
+  statusEl.id = 'connectionStatus';
+  statusEl.textContent = 'MQTT: connecting...';
+  document.querySelector('.panel-header').insertAdjacentElement('afterbegin', statusEl);
+  
+  client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', { connectTimeout: 4000, reconnectPeriod: 1000 });
+  client.on('connect', () => {
+    statusEl.textContent = 'MQTT: connected';
+    logMsg('✅ Connected to MQTT');
+    client.subscribe(`drivers/+/location`);
+    client.subscribe(`jobs/+/status`);
+    resendOfflineJobs();
+  });
+  client.on('message', (t, m) => {
+    try {
+      const j = JSON.parse(m.toString());
+      if (t.endsWith('/location')) updateDriver(t.split('/')[1], j.lat, j.lng, j);
+      
+      if (t.startsWith('jobs/') && t.endsWith('/status')) {
+        const jobId = t.split('/')[1];
+        if (visibleJobs[jobId]) {
+          // Handle bidding
+          if (j.status === 'bidding' && j.driver) {
+            if (!pendingJobs[jobId]) {
+              pendingJobs[jobId] = {
+                ...visibleJobs[jobId],
+                bidCount: 0,
+                bids: {},
+                timeoutId: setTimeout(() => finalizeBidding(jobId), BIDDING_WINDOW_MS)
+              };
+            }
+            if (!pendingJobs[jobId].bids[j.driver]) {
+              pendingJobs[jobId].bidCount += 1;
+              pendingJobs[jobId].bids[j.driver] = { lat: j.lat, lng: j.lng, timestamp: j.ts };
+              visibleJobs[jobId].status = `Bidding (${pendingJobs[jobId].bidCount})`;
+              visibleJobs[jobId].driver = '-';
               updateJobsTable();
+              localStorage.setItem('visibleJobs', JSON.stringify(visibleJobs));
+              logMsg(`📥 Bid #${pendingJobs[jobId].bidCount} for ${jobId} from ${j.driver}`);
             }
           }
-        } catch (e) { console.warn(e); }
+
+          // Handle other statuses
+          if (j.status !== 'bidding') {
+            visibleJobs[jobId].status = j.status;
+            visibleJobs[jobId].driver = j.driver || '-';
+            updateJobsTable();
+            localStorage.setItem('visibleJobs', JSON.stringify(visibleJobs));
+          }
+        }
+      }
+    } catch(e) { console.warn(e); }
+  });
+}
+
+// Helpers
+function distanceMeters(a, b) {
+  const R = 6371000;
+  const toRad = x => x * Math.PI / 180;
+  const φ1 = toRad(a.lat), φ2 = toRad(b.lat);
+  const Δφ = toRad(b.lat - a.lat), Δλ = toRad(b.lng - a.lng);
+  const a_ = Math.sin(Δφ/2)**2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a_), Math.sqrt(1 - a_));
+}
+
+function updateDriver(id, lat, lng, meta = {}) {
+  if (!id) return;
+  if (!drivers[id]?.marker) {
+    drivers[id] = { lat, lng, data: meta, marker: L.marker([lat, lng]).addTo(map) };
+  } else {
+    drivers[id].marker.setLatLng([lat, lng]);
+    drivers[id].lat = lat;
+    drivers[id].lng = lng;
+  }
+  refreshDriverList();
+}
+
+function refreshDriverList() {
+  el.driverList.innerHTML = '';
+  Object.entries(drivers).forEach(([id, d]) => {
+    const dist = distanceMeters(d, PUB_COORDS);
+    const div = document.createElement('div');
+    div.className = 'driver-item';
+    div.innerHTML = `
+      <div><b>${id}</b><div class="small">${d.data?.status || 'idle'}</div></div>
+      <div>${dist < 1000 ? dist.toFixed(0) + 'm' : (dist / 1000).toFixed(1) + 'km'}</div>
+    `;
+    el.driverList.appendChild(div);
+  });
+}
+
+// Jobs
+function sendOrder() {
+  const name = el.customerName.value.trim();
+  const phone = el.customerPhone.value.trim();
+  if (!name) return alert("Enter customer name");
+  if (!phone) return alert("Enter customer phone");
+
+  const jobId = 'job-' + Math.random().toString(36).substr(2, 8);
+  const job = {
+    job: jobId,
+    pubName: PUB_NAME,
+    customerName: name,
+    customerPhone: phone,
+    lat: PUB_COORDS.lat,
+    lng: PUB_COORDS.lng,
+    ts: Date.now(),
+    status: 'queued',
+    driver: '-'
+  };
+
+  visibleJobs[jobId] = job;
+  localStorage.setItem('visibleJobs', JSON.stringify(visibleJobs));
+  updateJobsTable();
+
+  if (client && client.connected) {
+    client.publish(`pubs/requests/${PUB_ID}`, JSON.stringify(job));
+    logMsg('📤 Sent job ' + jobId);
+  } else {
+    const offlineQueue = JSON.parse(localStorage.getItem('offlineQueue') || '[]');
+    offlineQueue.push(job);
+    localStorage.setItem('offlineQueue', JSON.stringify(offlineQueue));
+    logMsg('📦 Stored offline job ' + jobId);
+  }
+}
+
+function resendOfflineJobs() {
+  const offlineQueue = JSON.parse(localStorage.getItem('offlineQueue') || '[]');
+  if (offlineQueue.length === 0) return;
+  offlineQueue.forEach(j => {
+    client.publish(`pubs/requests/${PUB_ID}`, JSON.stringify(j));
+    logMsg('☁️ Resent job ' + j.job);
+  });
+  localStorage.setItem('offlineQueue', '[]');
+}
+
+function updateJobsTable() {
+  el.jobsTable.innerHTML = '';
+  Object.entries(visibleJobs).forEach(([id, j]) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${id}</td>
+      <td>${j.customerName || '-'}</td>
+      <td>${j.customerPhone || '-'}</td>
+      <td>${j.driver || '-'}</td>
+      <td>${j.status}</td>
+    `;
+    el.jobsTable.appendChild(tr);
+  });
+}
+
+// Finalize Bidding (60s)
+function finalizeBidding(jobId) {
+  const job = pendingJobs[jobId];
+  if (!job) return;
+
+  let winner = null;
+  const bids = Object.entries(job.bids || {});
+
+  if (bids.length > 0) {
+    const valid = bids.filter(([id]) => {
+      const d = drivers[id];
+      return d && (d.data?.status === 'idle' || d.data?.status === 'available');
+    });
+
+    if (valid.length > 0) {
+      valid.sort(([aId, a], [bId, b]) => {
+        const distA = distanceMeters(a, {lat: job.lat, lng: job.lng});
+        const distB = distanceMeters(b, {lat: job.lat, lng: job.lng});
+        return distA - distB;
       });
+      winner = valid[0][0];
     }
+  }
 
-    // === DRIVER UPDATE ===
-    function updateDriver(id, lat, lng) {
-      if (!id) return;
-      if (!drivers[id]) {
-        drivers[id] = { marker: L.marker([lat, lng]).addTo(map) };
-      } else {
-        drivers[id].marker.setLatLng([lat, lng]);
+  if (winner) {
+    visibleJobs[jobId].status = 'allocated';
+    visibleJobs[jobId].driver = winner;
+    client.publish(`jobs/${jobId}/result/${winner}`, JSON.stringify({ result: "won" }));
+    bids.forEach(([driverId]) => {
+      if (driverId !== winner) {
+        client.publish(`jobs/${jobId}/result/${driverId}`, JSON.stringify({ result: "lost" }));
       }
+    });
+    logMsg(`🏆 ${jobId} → ${winner}`);
+  } else {
+    visibleJobs[jobId].status = 'no_bids';
+    visibleJobs[jobId].driver = '-';
+    bids.forEach(([driverId]) => {
+      client.publish(`jobs/${jobId}/result/${driverId}`, JSON.stringify({ result: "no_valid_acceptance" }));
+    });
+    logMsg(`⏰ ${jobId}: no valid bids`);
+  }
+
+  delete pendingJobs[jobId];
+  updateJobsTable();
+  localStorage.setItem('visibleJobs', JSON.stringify(visibleJobs));
+}
+
+// Simulation
+function toggleSimDrivers(){
+  simActive = !simActive;
+  el.simulateBtn.innerText = simActive ? 'Stop Sim Drivers' : 'Toggle Sim Drivers';
+  if (simActive) simLoop();
+}
+function simLoop(){
+  if (!simActive) return;
+  for (let i = 1; i <= 3; i++) {
+    const id = `driver-${i}`;
+    const lat = PUB_COORDS.lat + (Math.random() - 0.5) * 0.004;
+    const lng = PUB_COORDS.lng + (Math.random() - 0.5) * 0.004;
+    if (client && client.connected) {
+      client.publish(`drivers/${id}/location`, JSON.stringify({ lat, lng, status: 'idle' }));
     }
+    updateDriver(id, lat, lng, { status: 'idle' });
+  }
+  setTimeout(simLoop, 3000);
+}
 
-    // === SEND ORDER ===
-    function sendOrder() {
-      const name = el.customerName.value.trim();
-      const phone = el.customerPhone.value.trim();
-      if (!name || !phone) return alert('Enter both name and phone');
+// Admin
+function refreshAllowedDriversList(){
+  el.allowedDriversList.innerHTML = allowedDrivers.map(d => `<li>${d}</li>`).join('');
+  localStorage.setItem('allowedDrivers', JSON.stringify(allowedDrivers));
+}
+el.adminBtn.onclick = () => el.adminPanel.style.display = 'block';
+el.closeAdmin.onclick = () => el.adminPanel.style.display = 'none';
+el.addDriverBtn.onclick = () => {
+  const d = el.adminDriverId.value.trim();
+  if (d && !allowedDrivers.includes(d)) {
+    allowedDrivers.push(d);
+    refreshAllowedDriversList();
+  }
+};
+el.removeDriverBtn.onclick = () => {
+  const d = el.adminDriverId.value.trim();
+  allowedDrivers = allowedDrivers.filter(x => x !== d);
+  refreshAllowedDriversList();
+};
+el.allowAllBtn.onclick = () => {
+  debugAllowAll = !debugAllowAll;
+  el.allowAllBtn.innerText = debugAllowAll ? 'Debug: Disallow All' : 'Debug: Allow All';
+  logMsg('Debug allow all = ' + debugAllowAll);
+};
 
-      const jobId = 'job-' + Math.random().toString(36).substr(2, 8);
-      const job = {
-        job: jobId,
-        pub: PUB_ID,
-        pubName: PUB_NAME,
-        customerName: name,
-        customerPhone: phone,
-        lat: PUB_COORDS.lat,
-        lng: PUB_COORDS.lng,
-        ts: Date.now(),
-        status: 'bidding'
-      };
-
-      visibleJobs[jobId] = job;
-      localStorage.setItem('visibleJobs', JSON.stringify(visibleJobs));
-      updateJobsTable();
-      logMsg(`🚕 New job ${jobId} (${name})`);
-
-      if (client && client.connected) {
-        client.publish(`pubs/requests/${PUB_ID}`, JSON.stringify(job));
-        setTimeout(() => finalizeBidding(jobId), BIDDING_WINDOW_MS);
-      } else {
-        offlineQueue.push(job);
-        localStorage.setItem('offlineQueue', JSON.stringify(offlineQueue));
-        logMsg(`📦 Stored offline job ${jobId}`);
-      }
-
-      el.customerName.value = '';
-      el.customerPhone.value = '';
-    }
-
-    // === RESEND OFFLINE JOBS ===
-    function resendOfflineJobs() {
-      if (offlineQueue.length === 0) return;
-      offlineQueue.forEach(j => {
-        client.publish(`pubs/requests/${PUB_ID}`, JSON.stringify(j));
-        logMsg(`☁️ Resent job ${j.job}`);
-      });
-      offlineQueue.length = 0;
-      localStorage.setItem('offlineQueue', '[]');
-    }
-
-    // === FINALIZE BIDDING ===
-    function distanceMeters(a, b) {
-      const R = 6371000;
-      const toRad = x => x * Math.PI / 180;
-      const φ1 = toRad(a.lat), φ2 = toRad(b.lat);
-      const Δφ = toRad(b.lat - a.lat);
-      const Δλ = toRad(b.lng - a.lng);
-      const a_ = Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
-      return R * 2 * Math.atan2(Math.sqrt(a_), Math.sqrt(1-a_));
-    }
-    function finalizeBidding(jobId) {
-      const job = pendingJobs[jobId];
-      if (!job) return;
-      const bids = Object.entries(job.bids || {});
-      let winner = null;
-      if (bids.length > 0) {
-        bids.sort(([,a],[,b]) => distanceMeters(a,{lat:PUB_COORDS.lat,lng:PUB_COORDS.lng}) - distanceMeters(b,{lat:PUB_COORDS.lat,lng:PUB_COORDS.lng}));
-        winner = bids[0][0];
-      }
-      if (winner) {
-        visibleJobs[jobId].status = 'allocated';
-        visibleJobs[jobId].driver = winner;
-        client.publish(`jobs/${jobId}/status`, JSON.stringify({ job: jobId, driver: winner, status: 'allocated', ts: Date.now() }));
-        logMsg(`🏆 Job ${jobId} awarded to ${winner}`);
-      } else {
-        visibleJobs[jobId].status = 'no_bids';
-        logMsg(`⏰ No bids for ${jobId}`);
-      }
-      updateJobsTable();
-      delete pendingJobs[jobId];
-    }
-
-    // === JOB TABLE ===
-    function updateJobsTable() {
-      el.jobsTable.innerHTML = '';
-      Object.entries(visibleJobs).forEach(([id, j]) => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${id}</td><td>${j.customerName}</td><td>${j.customerPhone}</td><td>${j.driver || '-'}</td><td>${j.status}</td>`;
-        el.jobsTable.appendChild(tr);
-      });
-    }
-
-    // === SIMULATION ===
-    function toggleSimDrivers() {
-      simActive = !simActive;
-      if (simActive) simLoop();
-    }
-    function simLoop() {
-      if (!simActive) return;
-      for (let i=1; i<=3; i++) {
-        const id = `driver-${i}`;
-        const lat = PUB_COORDS.lat + (Math.random()-0.5)*0.004;
-        const lng = PUB_COORDS.lng + (Math.random()-0.5)*0.004;
-        if (client && client.connected)
-          client.publish(`drivers/${id}/location`, JSON.stringify({ lat, lng }));
-      }
-      setTimeout(simLoop, 3000);
-    }
-
-    // === PWA ===
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('service-worker.js');
-      logMsg('📱 Service worker registered');
-    }
-
-    // === LOG UI ===
-    el.logButton.onclick = () => el.logOverlay.style.display = 'flex';
-    el.closeLog.onclick = () => el.logOverlay.style.display = 'none';
-
-    el.orderBtn.onclick = sendOrder;
-    connectMQTT();
-    updateJobsTable();
-    el.logContent.textContent = logText;
-  </script>
+// Init
+el.orderBtn.onclick = sendOrder;
+el.simulateBtn.onclick = toggleSimDrivers;
+connectMQTT();
+updateJobsTable();
+refreshAllowedDriversList();
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('service-worker.js');
+}
+el.logOutput.textContent = localStorage.getItem('activityLog') || '';
+</script>
 </body>
 </html>
