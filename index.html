@@ -25,7 +25,7 @@ header{display:flex;align-items:center;justify-content:space-between;gap:12px;}
   box-shadow:0 6px 16px rgba(0,0,0,0.06);
   display:flex;
   flex-direction:column;
-  overflow:hidden;
+  overflow:hidden; /* critical for scroll */
 }
 .panel-header{
   padding:12px;
@@ -201,56 +201,19 @@ footer{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
 <script>
-// === CONFIG ===
-const PUB_ID = 'coventry-rugby-butts-park';
-const PUB_NAME = 'Coventry Rugby — Butts Park Arena';
-const PUB_COORDS = { lat: 52.407234, lng: -1.525504 };
+const PUB_ID='coventry-rugby-butts-park';
+const PUB_NAME='Coventry Rugby — Butts Park Arena';
+const PUB_COORDS={lat:52.407234,lng:-1.525504};
 const BIDDING_WINDOW_MS = 60_000; // 60 seconds
 
-// ===== FCM PUSH VIA CLOUD FUNCTION (HTTP) =====
-const CLOUD_FUNCTION_URL = 'https://europe-west2-cabunite.cloudfunctions.net/sendJobAlertHttp';
-
-async function sendPushToDriver(driverId, fcmToken, jobId, reason) {
-  if (!driverId || typeof driverId !== 'string' || driverId.trim() === '') {
-    logMsg(`⚠️ Skip push: invalid driverId "${driverId}"`);
-    return;
-  }
-  driverId = driverId.trim();
-
-  if (!fcmToken) {
-    logMsg(`❌ No FCM token for ${driverId}`);
-    return;
-  }
-
-  try {
-    logMsg(`📤 Sending push to ${driverId}...`);
-    const response = await fetch(CLOUD_FUNCTION_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ driverId, fcmToken, jobId, reason })
-    });
-
-    const data = await response.json();
-
-    if (response.ok && data.messageId) {
-      logMsg(`✅ Push sent to ${driverId} (${data.messageId})`);
-    } else {
-      logMsg(`❌ Push failed for ${driverId}: ${data.error || JSON.stringify(data)}`);
-    }
-  } catch (err) {
-    logMsg(`❌ Push error for ${driverId}: ${err.message}`);
-  }
-}
-
-// === STATE ===
 const drivers = {};
-const pendingJobs = {};
+const pendingJobs = {}; // { jobId: { bidCount, bids: { driverId: {lat,lng} }, timeoutId } }
 let visibleJobs = JSON.parse(localStorage.getItem('visibleJobs') || '{}');
 let allowedDrivers = JSON.parse(localStorage.getItem('allowedDrivers') || []);
 let debugAllowAll = false;
 let simActive = false;
 
-// === DOM ===
+// UI elements
 const el = {
   connectionStatus: document.getElementById('connectionStatus'),
   driverList: document.getElementById('driverList'),
@@ -272,7 +235,7 @@ const el = {
   logOutput: document.getElementById('logOutput')
 };
 
-// === LOGGING ===
+// Logging
 function logMsg(msg){
   const ts = new Date().toLocaleTimeString();
   const entry = `[${ts}] ${msg}\n`;
@@ -284,49 +247,12 @@ function logMsg(msg){
 el.logBtn.onclick = () => el.logPanel.classList.toggle('open');
 function clearLog(){ localStorage.removeItem('activityLog'); el.logOutput.textContent = ''; }
 
-// === MAP ===
+// Map
 const map = L.map('map').setView([PUB_COORDS.lat, PUB_COORDS.lng], 15);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 L.marker([PUB_COORDS.lat, PUB_COORDS.lng]).addTo(map).bindPopup(PUB_NAME);
 
-// === HELPERS ===
-function distanceMeters(a, b) {
-  const R = 6371000;
-  const toRad = x => x * Math.PI / 180;
-  const φ1 = toRad(a.lat), φ2 = toRad(b.lat);
-  const Δφ = toRad(b.lat - a.lat), Δλ = toRad(b.lng - a.lng);
-  const a_ = Math.sin(Δφ/2)**2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2)**2;
-  return R * 2 * Math.atan2(Math.sqrt(a_), Math.sqrt(1 - a_));
-}
-
-// === DRIVER MANAGEMENT ===
-function updateDriver(id, lat, lng, meta = {}) {
-  if (!id) return;
-  if (!drivers[id]?.marker) {
-    drivers[id] = { lat, lng, data: meta, marker: L.marker([lat, lng]).addTo(map) };
-  } else {
-    drivers[id].marker.setLatLng([lat, lng]);
-    drivers[id].lat = lat;
-    drivers[id].lng = lng;
-  }
-  refreshDriverList();
-}
-
-function refreshDriverList() {
-  el.driverList.innerHTML = '';
-  Object.entries(drivers).forEach(([id, d]) => {
-    const dist = distanceMeters(d, PUB_COORDS);
-    const div = document.createElement('div');
-    div.className = 'driver-item';
-    div.innerHTML = `
-      <div><b>${id}</b><div class="small">${d.data?.status || 'idle'}</div></div>
-      <div>${dist < 1000 ? dist.toFixed(0) + 'm' : (dist / 1000).toFixed(1) + 'km'}</div>
-    `;
-    el.driverList.appendChild(div);
-  });
-}
-
-// === MQTT ===
+// MQTT
 let client = null;
 function connectMQTT(){
   const statusEl = document.createElement('div');
@@ -341,7 +267,6 @@ function connectMQTT(){
     logMsg('✅ Connected to MQTT');
     client.subscribe(`drivers/+/location`);
     client.subscribe(`jobs/+/status`);
-    client.subscribe('drivers/tokens'); // 👈 FCM token subscription
     resendOfflineJobs();
   });
   client.on('message', (t, m) => {
@@ -349,25 +274,6 @@ function connectMQTT(){
       const j = JSON.parse(m.toString());
       if (t.endsWith('/location')) updateDriver(t.split('/')[1], j.lat, j.lng, j);
       
-      // 👇 FCM TOKEN HANDLING
-      if (t === 'drivers/tokens') {
-        const { driverId, fcmToken } = j;
-        if (driverId && fcmToken) {
-          if (!drivers[driverId]) {
-            drivers[driverId] = {
-              lat: PUB_COORDS.lat,
-              lng: PUB_COORDS.lng,
-              data: { label: 'Taxi', status: 'idle' },
-              fcmToken: fcmToken
-            };
-            drivers[driverId].marker = L.marker([PUB_COORDS.lat, PUB_COORDS.lng]).addTo(map);
-          } else {
-            drivers[driverId].fcmToken = fcmToken;
-          }
-          logMsg(`✅ FCM token received for ${driverId}`);
-        }
-      }
-
       if (t.startsWith('jobs/') && t.endsWith('/status')) {
         const jobId = t.split('/')[1];
         if (visibleJobs[jobId]) {
@@ -405,7 +311,43 @@ function connectMQTT(){
   });
 }
 
-// === JOBS ===
+// Helpers
+function distanceMeters(a, b) {
+  const R = 6371000;
+  const toRad = x => x * Math.PI / 180;
+  const φ1 = toRad(a.lat), φ2 = toRad(b.lat);
+  const Δφ = toRad(b.lat - a.lat), Δλ = toRad(b.lng - a.lng);
+  const a_ = Math.sin(Δφ/2)**2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a_), Math.sqrt(1 - a_));
+}
+
+function updateDriver(id, lat, lng, meta = {}) {
+  if (!id) return;
+  if (!drivers[id]?.marker) {
+    drivers[id] = { lat, lng, data: meta, marker: L.marker([lat, lng]).addTo(map) };
+  } else {
+    drivers[id].marker.setLatLng([lat, lng]);
+    drivers[id].lat = lat;
+    drivers[id].lng = lng;
+  }
+  refreshDriverList();
+}
+
+function refreshDriverList() {
+  el.driverList.innerHTML = '';
+  Object.entries(drivers).forEach(([id, d]) => {
+    const dist = distanceMeters(d, PUB_COORDS);
+    const div = document.createElement('div');
+    div.className = 'driver-item';
+    div.innerHTML = `
+      <div><b>${id}</b><div class="small">${d.data?.status || 'idle'}</div></div>
+      <div>${dist < 1000 ? dist.toFixed(0) + 'm' : (dist / 1000).toFixed(1) + 'km'}</div>
+    `;
+    el.driverList.appendChild(div);
+  });
+}
+
+// Jobs
 function sendOrder() {
   const name = el.customerName.value.trim();
   const phone = el.customerPhone.value.trim();
@@ -431,23 +373,6 @@ function sendOrder() {
 
   if (client && client.connected) {
     client.publish(`pubs/requests/${PUB_ID}`, JSON.stringify(job));
-    
-    // 👇 SEND FCM PUSH TO ELIGIBLE DRIVERS
-    const now = Date.now();
-    Object.entries(drivers).forEach(([id, driver]) => {
-      if (!id || !driver.fcmToken) return;
-      const isAllowed = debugAllowAll || allowedDrivers.includes(id);
-      const isFresh = (now - (driver.lastActive || 0)) < 60_000;
-      const inRange = distanceMeters(driver, PUB_COORDS) <= 10_000; // 10km
-      
-      let reason = 'eligible';
-      if (!isAllowed) reason = 'not_allowed';
-      else if (!isFresh) reason = 'gps_old';
-      else if (!inRange) reason = 'out_of_range';
-      
-      sendPushToDriver(id, driver.fcmToken, jobId, reason);
-    });
-    
     logMsg('📤 Sent job ' + jobId);
   } else {
     const offlineQueue = JSON.parse(localStorage.getItem('offlineQueue') || '[]');
@@ -482,7 +407,7 @@ function updateJobsTable() {
   });
 }
 
-// === FINALIZE BIDDING (60s) ===
+// Finalize Bidding (60s)
 function finalizeBidding(jobId) {
   const job = pendingJobs[jobId];
   if (!job) return;
@@ -530,7 +455,7 @@ function finalizeBidding(jobId) {
   localStorage.setItem('visibleJobs', JSON.stringify(visibleJobs));
 }
 
-// === SIMULATION ===
+// Simulation
 function toggleSimDrivers(){
   simActive = !simActive;
   el.simulateBtn.innerText = simActive ? 'Stop Sim Drivers' : 'Toggle Sim Drivers';
@@ -544,23 +469,13 @@ function simLoop(){
     const lng = PUB_COORDS.lng + (Math.random() - 0.5) * 0.004;
     if (client && client.connected) {
       client.publish(`drivers/${id}/location`, JSON.stringify({ lat, lng, status: 'idle' }));
-      // Simulate FCM token
-      if (!drivers[id]) {
-        drivers[id] = {
-          lat, lng,
-          data: { status: 'idle' },
-          fcmToken: `simulated-token-${id}`,
-          lastActive: Date.now()
-        };
-        drivers[id].marker = L.marker([lat, lng]).addTo(map);
-      }
     }
     updateDriver(id, lat, lng, { status: 'idle' });
   }
   setTimeout(simLoop, 3000);
 }
 
-// === ADMIN ===
+// Admin
 function refreshAllowedDriversList(){
   el.allowedDriversList.innerHTML = allowedDrivers.map(d => `<li>${d}</li>`).join('');
   localStorage.setItem('allowedDrivers', JSON.stringify(allowedDrivers));
@@ -585,7 +500,7 @@ el.allowAllBtn.onclick = () => {
   logMsg('Debug allow all = ' + debugAllowAll);
 };
 
-// === INIT ===
+// Init
 el.orderBtn.onclick = sendOrder;
 el.simulateBtn.onclick = toggleSimDrivers;
 connectMQTT();
