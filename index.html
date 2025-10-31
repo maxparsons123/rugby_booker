@@ -127,6 +127,7 @@ footer{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:
   overflow:hidden;
   transition:max-height 0.4s ease;
   padding:0 12px;
+  z-index:1001; /* ✅ Ensures log panel is on top */
 }
 #logPanel.open{max-height:40vh;padding:12px;}
 #logOutput{
@@ -142,6 +143,7 @@ footer{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:
 @media(max-width:900px){
   .main{flex-direction:column;}
   .panel{width:100%;}
+
   .booking-row input{font-size:14px;}
 }
 </style>
@@ -287,7 +289,7 @@ let simActive = false;
 
 // === DOM ===
 const el = {
-  connectionStatus: document.getElementById('connectionStatus'),
+  connectionStatus: null, // will be set later
   driverList: document.getElementById('driverList'),
   customerName: document.getElementById('customerName'),
   customerPhone: document.getElementById('customerPhone'),
@@ -376,6 +378,43 @@ function refreshDriverList() {
   });
 }
 
+// === REASSIGN JOB FUNCTION (NEW) ===
+function reassignJob(jobId, excludedDriverId) {
+  const job = visibleJobs[jobId];
+  if (!job) return;
+
+  job.status = 'reassigned';
+  job.driver = '-';
+  updateJobsTable();
+  localStorage.setItem('visibleJobs', JSON.stringify(visibleJobs));
+
+  const jobPayload = { ...job, ts: Date.now(), status: 'queued' };
+  if (client?.connected) {
+    client.publish(`pubs/requests/${PUB_ID}`, JSON.stringify(jobPayload));
+
+    const now = Date.now();
+    Object.entries(drivers).forEach(([id, drv]) => {
+      if (id === excludedDriverId || !drv.fcmToken) return;
+      const isAllowed = debugAllowAll || allowedDrivers.includes(id);
+      const isFresh = (now - (drv.lastActive || 0)) < 60_000;
+      const inRange = distanceMeters(drv, PUB_COORDS) <= 10_000;
+      let reason = isAllowed && isFresh && inRange ? 'eligible' : 
+                   !isAllowed ? 'not_allowed' : 
+                   !isFresh ? 'gps_old' : 'out_of_range';
+      sendPushToDriver(id, drv.fcmToken, jobId, reason);
+    });
+
+    logMsg(`🔄 Reassigned ${jobId} (excluded ${excludedDriverId})`);
+  }
+
+  pendingJobs[jobId] = {
+    ...jobPayload,
+    bidCount: 0,
+    bids: {},
+    timeoutId: setTimeout(() => finalizeBidding(jobId), BIDDING_WINDOW_MS)
+  };
+}
+
 // === MQTT ===
 let client = null;
 function connectMQTT(){
@@ -384,6 +423,7 @@ function connectMQTT(){
   statusEl.id = 'connectionStatus';
   statusEl.textContent = 'MQTT: connecting...';
   document.querySelector('.booking-panel').insertAdjacentElement('afterbegin', statusEl);
+  el.connectionStatus = statusEl;
   
   client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', { connectTimeout: 4000, reconnectPeriod: 1000 });
   client.on('connect', () => {
@@ -392,12 +432,30 @@ function connectMQTT(){
     client.subscribe(`drivers/+/location`);
     client.subscribe(`jobs/+/status`);
     client.subscribe('drivers/tokens');
+    client.subscribe('jobs/+/reject'); // optional, but safe
     resendOfflineJobs();
   });
   client.on('message', (t, m) => {
     try {
       const j = JSON.parse(m.toString());
-      if (t.endsWith('/location')) updateDriver(t.split('/')[1], j.lat, j.lng, j);
+      if (t.endsWith('/location')) {
+        const driverId = t.split('/')[1];
+        const payload = j;
+        updateDriver(driverId, payload.lat, payload.lng, payload);
+
+        // 🔥 NEW: Auto-reassign if driver goes BUSY while holding a job
+        if (payload.status === 'busy') {
+          const activeStatuses = ['allocated', 'accepted', 'en_route', 'reassigned'];
+          const assignedJob = Object.entries(visibleJobs).find(([id, job]) => 
+            job.driver === driverId && activeStatuses.includes(job.status)
+          );
+          if (assignedJob) {
+            const [jobId] = assignedJob;
+            logMsg(`⚠️ Driver ${driverId} went BUSY — reclaiming job ${jobId}`);
+            reassignJob(jobId, driverId);
+          }
+        }
+      }
       
       // FCM TOKEN HANDLING
       if (t === 'drivers/tokens') {
@@ -473,7 +531,6 @@ function sendOrder() {
     driver: '-'
   };
 
-  // Initialize pendingJobs for bidding
   pendingJobs[jobId] = {
     ...job,
     bidCount: 0,
@@ -481,7 +538,6 @@ function sendOrder() {
     timeoutId: setTimeout(() => finalizeBidding(jobId), BIDDING_WINDOW_MS)
   };
 
-  // Insert at top for latest-on-top
   visibleJobs = { [jobId]: job, ...visibleJobs };
 
   localStorage.setItem('visibleJobs', JSON.stringify(visibleJobs));
@@ -490,7 +546,6 @@ function sendOrder() {
   if (client && client.connected) {
     client.publish(`pubs/requests/${PUB_ID}`, JSON.stringify(job));
     
-    // Send FCM pushes
     const now = Date.now();
     Object.entries(drivers).forEach(([id, driver]) => {
       if (!id || !driver.fcmToken) return;
@@ -652,6 +707,17 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('service-worker.js');
 }
 el.logOutput.textContent = localStorage.getItem('activityLog') || '';
+
+// ✅ NEW: Close log panel when clicking outside
+document.addEventListener('click', (e) => {
+  const logPanel = el.logPanel;
+  const logBtn = el.logBtn;
+  if (logPanel.classList.contains('open')) {
+    if (!logPanel.contains(e.target) && e.target !== logBtn) {
+      logPanel.classList.remove('open');
+    }
+  }
+});
 </script>
 </body>
 </html>
