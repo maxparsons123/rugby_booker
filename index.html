@@ -7,6 +7,9 @@
 <meta name="theme-color" content="#1f6feb" />
 <link rel="manifest" href="manifest.json" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<!-- Firebase SDKs -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-functions-compat.js"></script>
 <style>
 :root{--accent:#1f6feb;--accent-2:#ff7b00;--bg:#f7fafc;--card:#ffffff;}
 html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial;background:var(--bg);color:#111;}
@@ -127,7 +130,7 @@ footer{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:
   overflow:hidden;
   transition:max-height 0.4s ease;
   padding:0 12px;
-  z-index:1001; /* ✅ Ensures log panel is on top */
+  z-index:1001;
 }
 #logPanel.open{max-height:40vh;padding:12px;}
 #logOutput{
@@ -143,7 +146,6 @@ footer{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:
 @media(max-width:900px){
   .main{flex-direction:column;}
   .panel{width:100%;}
-
   .booking-row input{font-size:14px;}
 }
 </style>
@@ -167,7 +169,6 @@ footer{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:
 <div class="main">
   <div id="map"></div>
   <div class="panel">
-    <!-- Static Booking Panel -->
     <div class="booking-panel">
       <div class="booking-row">
         <input type="text" id="customerName" placeholder="Customer name" />
@@ -177,7 +178,6 @@ footer{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:
       <button class="clear-btn" id="clearStorageBtn">🗑️ Clear All Data</button>
     </div>
 
-    <!-- Scrollable Content -->
     <div class="scroll-content">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
         <div style="font-weight:700">Nearby Drivers</div>
@@ -201,7 +201,6 @@ footer{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:
   <div>Topics: pubs/requests/{pub_id} • drivers/tokens • jobs/+/status</div>
 </footer>
 
-<!-- Admin Panel -->
 <div class="admin-panel" id="adminPanel">
   <span class="close-btn" id="closeAdmin">&times;</span>
   <h3>Admin Panel</h3>
@@ -215,7 +214,6 @@ footer{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:
   <div style="margin-top:12px;"><strong>Allowed:</strong><ul id="allowedDriversList"></ul></div>
 </div>
 
-<!-- Slide-up Log Panel -->
 <div id="logPanel">
   <h3 style="margin:0 0 8px 0;">📋 Activity Log</h3>
   <div id="logOutput"></div>
@@ -225,44 +223,54 @@ footer{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
 <script>
+// === FIREBASE INIT ===
+const firebaseConfig = {
+  apiKey: "AIzaSyBq1aN-KRtRW7S243ef7lz7fnZmlBcuN1s",
+  authDomain: "cabunite.firebaseapp.com",
+  projectId: "cabunite",
+  storageBucket: "cabunite.firebasestorage.app",
+  messagingSenderId: "997924656033",
+  appId: "1:997924656033:web:1552b9f26a1af0878eb1e0"
+};
+firebase.initializeApp(firebaseConfig);
+const functions = firebase.functions(); // Auto-detects project
+
 // === CONFIG ===
 const PUB_ID = 'coventry-rugby-butts-park';
 const PUB_NAME = 'Coventry Rugby — Butts Park Arena';
 const PUB_COORDS = { lat: 52.407234, lng: -1.525504 };
-const BIDDING_WINDOW_MS = 60_000; // 60 seconds
+const BIDDING_WINDOW_MS = 60_000;
 
-// ===== FCM PUSH VIA CLOUD FUNCTION (HTTP) =====
-const CLOUD_FUNCTION_URL = 'https://europe-west2-cabunite.cloudfunctions.net/sendJobAlertHttp';
-
+// === NEW: Secure FCM via Callable Function ===
 async function sendPushToDriver(driverId, fcmToken, jobId, reason) {
-  if (!driverId || typeof driverId !== 'string' || driverId.trim() === '') {
-    logMsg(`⚠️ Skip push: invalid driverId "${driverId}"`);
-    return;
-  }
-  driverId = driverId.trim();
-
-  if (!fcmToken) {
-    logMsg(`❌ No FCM token for ${driverId}`);
+  if (!fcmToken || !jobId) {
+    logMsg(`❌ Skip FCM: missing token or jobId for ${driverId}`);
     return;
   }
 
   try {
-    logMsg(`📤 Sending push to ${driverId}...`);
-    const response = await fetch(CLOUD_FUNCTION_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ driverId, fcmToken, jobId, reason })
+    logMsg(`📤 Sending FCM to ${driverId} via callable function...`);
+
+    const job = visibleJobs[jobId];
+    if (!job) {
+      logMsg(`❌ Job ${jobId} not found`);
+      return;
+    }
+
+    const sendAlert = functions.httpsCallable('sendJobAlert');
+    const result = await sendAlert({
+      fcmToken: fcmToken,
+      jobId: jobId,
+      pubName: job.pubName,
+      customerName: job.customerName,
+      customerPhone: job.customerPhone,
+      lat: job.lat,
+      lng: job.lng
     });
 
-    const data = await response.json();
-
-    if (response.ok && data.messageId) {
-      logMsg(`✅ Push sent to ${driverId} (${data.messageId})`);
-    } else {
-      logMsg(`❌ Push failed for ${driverId}: ${data.error || JSON.stringify(data)}`);
-    }
-  } catch (err) {
-    logMsg(`❌ Push error for ${driverId}: ${err.message}`);
+    logMsg(`✅ FCM sent to ${driverId} (${result.data.messageId})`);
+  } catch (error) {
+    logMsg(`❌ FCM error for ${driverId}: ${error.message}`);
   }
 }
 
@@ -289,7 +297,7 @@ let simActive = false;
 
 // === DOM ===
 const el = {
-  connectionStatus: null, // will be set later
+  connectionStatus: null,
   driverList: document.getElementById('driverList'),
   customerName: document.getElementById('customerName'),
   customerPhone: document.getElementById('customerPhone'),
@@ -322,7 +330,6 @@ function logMsg(msg){
 el.logBtn.onclick = () => el.logPanel.classList.toggle('open');
 function clearLog(){ localStorage.removeItem('activityLog'); el.logOutput.textContent = ''; }
 
-// === CLEAR STORAGE BUTTON ===
 el.clearStorageBtn.onclick = () => {
   if (confirm("⚠️ Clear ALL data? This will remove jobs, drivers, logs, and settings.")) {
     localStorage.clear();
@@ -378,7 +385,7 @@ function refreshDriverList() {
   });
 }
 
-// === REASSIGN JOB FUNCTION (NEW) ===
+// === REASSIGN JOB FUNCTION ===
 function reassignJob(jobId, excludedDriverId) {
   const job = visibleJobs[jobId];
   if (!job) return;
@@ -432,7 +439,7 @@ function connectMQTT(){
     client.subscribe(`drivers/+/location`);
     client.subscribe(`jobs/+/status`);
     client.subscribe('drivers/tokens');
-    client.subscribe('jobs/+/reject'); // optional, but safe
+    client.subscribe('jobs/+/reject');
     resendOfflineJobs();
   });
   client.on('message', (t, m) => {
@@ -443,7 +450,6 @@ function connectMQTT(){
         const payload = j;
         updateDriver(driverId, payload.lat, payload.lng, payload);
 
-        // 🔥 NEW: Auto-reassign if driver goes BUSY while holding a job
         if (payload.status === 'busy') {
           const activeStatuses = ['allocated', 'accepted', 'en_route', 'reassigned'];
           const assignedJob = Object.entries(visibleJobs).find(([id, job]) => 
@@ -457,7 +463,6 @@ function connectMQTT(){
         }
       }
       
-      // FCM TOKEN HANDLING
       if (t === 'drivers/tokens') {
         const { driverId, fcmToken } = j;
         if (driverId && fcmToken) {
@@ -518,7 +523,7 @@ function sendOrder() {
   if (!name) return alert("Enter customer name");
   if (!phone) return alert("Enter customer phone");
 
-  const jobId = 'job-' + Math.random().toString(36).substr(2, 4); // short ID
+  const jobId = 'job-' + Math.random().toString(36).substr(2, 4);
   const job = {
     job: jobId,
     pubName: PUB_NAME,
@@ -539,7 +544,6 @@ function sendOrder() {
   };
 
   visibleJobs = { [jobId]: job, ...visibleJobs };
-
   localStorage.setItem('visibleJobs', JSON.stringify(visibleJobs));
   updateJobsTable();
 
@@ -708,7 +712,6 @@ if ('serviceWorker' in navigator) {
 }
 el.logOutput.textContent = localStorage.getItem('activityLog') || '';
 
-// ✅ NEW: Close log panel when clicking outside
 document.addEventListener('click', (e) => {
   const logPanel = el.logPanel;
   const logBtn = el.logBtn;
