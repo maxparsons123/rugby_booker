@@ -317,58 +317,16 @@ const BIDDING_WINDOW_MS = 60_000;
 // ===== FCM PUSH VIA CLOUD FUNCTION (HTTP) =====
 const CLOUD_FUNCTION_URL = 'https://europe-west2-cabunite.cloudfunctions.net/sendJobAlertHttp';
 
-async function sendPushToDriver(driverId, fcmToken, jobId, reason) {
-  if (!driverId || typeof driverId !== 'string' || driverId.trim() === '') {
-    logMsg(`⚠️ Skip push: invalid driverId "${driverId}"`, 'warning');
-    return;
-  }
-  driverId = driverId.trim();
-
-  if (!fcmToken) {
-    logMsg(`❌ No FCM token for ${driverId}`, 'error');
-    return;
-  }
-
-  try {
-    logMsg(`📤 Sending push to ${driverId}...`, 'info');
-    const response = await fetch(CLOUD_FUNCTION_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ driverId, fcmToken, jobId, reason })
-    });
-
-    const data = await response.json();
-
-    if (response.ok && data.messageId) {
-      logMsg(`✅ Push sent to ${driverId} (${data.messageId})`, 'success');
-    } else {
-      logMsg(`❌ Push failed for ${driverId}: ${data.error || JSON.stringify(data)}`, 'error');
-    }
-  } catch (err) {
-    logMsg(`❌ Push error for ${driverId}: ${err.message}`, 'error');
-  }
-}
-
-// === SAFE JSON PARSING ===
-function safeParseJson(key, fallback) {
-  const item = localStorage.getItem(key);
-  if (item === null || item === '') return fallback;
-  try {
-    return JSON.parse(item);
-  } catch (e) {
-    console.warn(`Invalid JSON in localStorage.${key}:`, item);
-    localStorage.removeItem(key);
-    return fallback;
-  }
-}
-
 // === STATE ===
 const drivers = {};
 const pendingJobs = {};
-let visibleJobs = safeParseJson('visibleJobs', {});
-let allowedDrivers = safeParseJson('allowedDrivers', []);
+let visibleJobs = JSON.parse(localStorage.getItem('visibleJobs') || '{}');
+let allowedDrivers = JSON.parse(localStorage.getItem('allowedDrivers') || '[]');
 let debugAllowAll = false;
 let simActive = false;
+
+// === TRACK ALLOCATED JOBS PER DRIVER ===
+const allocatedJobs = {}; // driverId → jobId
 
 // === MAP OVERLAYS ===
 let currentRouteLine = null;
@@ -430,6 +388,7 @@ el.clearStorageBtn.onclick = () => {
     localStorage.clear();
     visibleJobs = {};
     pendingJobs = {};
+    Object.keys(allocatedJobs).forEach(d => delete allocatedJobs[d]);
     drivers = {};
     updateJobsTable();
     el.driverList.innerHTML = '';
@@ -473,12 +432,10 @@ function showJobOnMap(job) {
     return;
   }
 
-  // Clean up old layers
   if (currentRouteLine) map.removeLayer(currentRouteLine);
   if (driverFocusMarker) map.removeLayer(driverFocusMarker);
   if (pickupFocusMarker) map.removeLayer(pickupFocusMarker);
 
-  // Route: driver → pickup
   const routePoints = [
     [driverData.lat, driverData.lng],
     [job.lat, job.lng]
@@ -490,7 +447,6 @@ function showJobOnMap(job) {
     dashArray: '5, 5'
   }).addTo(map);
 
-  // Driver marker with passenger name
   const passengerName = job.customerName || 'Passenger';
   driverFocusMarker = L.marker([driverData.lat, driverData.lng], {
     title: `${driverId} → ${passengerName}`,
@@ -509,10 +465,8 @@ function showJobOnMap(job) {
     })
   }).addTo(map);
 
-  // Zoom to fit
   map.fitBounds(L.latLngBounds(routePoints), { padding: [60, 60] });
 
-  // ETA
   const distM = distanceMeters(driverData, { lat: job.lat, lng: job.lng });
   const distKm = (distM / 1000).toFixed(1);
   const etaMin = Math.max(1, Math.round((distM / 1000) / 0.5));
@@ -522,13 +476,67 @@ function showJobOnMap(job) {
 // === DRIVER MANAGEMENT ===
 function updateDriver(id, lat, lng, meta = {}) {
   if (!id) return;
+  const wasStatus = drivers[id]?.data?.status;
+  const newStatus = meta.status || 'idle';
+
   if (!drivers[id]?.marker) {
     drivers[id] = { lat, lng, data: meta, marker: L.marker([lat, lng]).addTo(map) };
   } else {
     drivers[id].marker.setLatLng([lat, lng]);
     drivers[id].lat = lat;
     drivers[id].lng = lng;
+    drivers[id].data = meta;
   }
+
+  // === HANDLE DRIVER STATUS CHANGE ===
+  if (wasStatus && wasStatus !== newStatus) {
+    if (allocatedJobs[id] && (newStatus === 'busy' || newStatus === 'offline')) {
+      const jobId = allocatedJobs[id];
+      const job = visibleJobs[jobId];
+      if (job) {
+        logMsg(`⚠️ Driver ${id} went ${newStatus} — cancelling job ${jobId}`, 'warning');
+        
+        // Cancel current job
+        client.publish(`jobs/${jobId}/status`, JSON.stringify({
+          job: jobId,
+          driver: id,
+          status: "abandoned",
+          reason: newStatus,
+          ts: Date.now()
+        }));
+
+        // Re-publish job excluding this driver
+        const excluded = [...(job.excludedDrivers || []), id];
+        const relistedJob = {
+          ...job,
+          status: 'queued',
+          driver: '-',
+          excludedDrivers: excluded,
+          ts: Date.now()
+        };
+        visibleJobs[jobId] = relistedJob;
+        localStorage.setItem('visibleJobs', JSON.stringify(visibleJobs));
+        updateJobsTable();
+
+        client.publish(`pubs/requests/${PUB_ID}`, JSON.stringify(relistedJob));
+        logMsg(`🔄 Job ${jobId} relisted (excluded ${id})`, 'info');
+
+        // Send FCM to eligible drivers
+        const now = Date.now();
+        Object.entries(drivers).forEach(([driverId, driver]) => {
+          if (!driverId || !driver.fcmToken || excluded.includes(driverId)) return;
+          const isAllowed = debugAllowAll || allowedDrivers.includes(driverId);
+          const isFresh = (now - (driver.lastActive || 0)) < 60_000;
+          const inRange = distanceMeters(driver, PUB_COORDS) <= 10_000;
+          if (isAllowed && isFresh && inRange) {
+            sendPushToDriver(driverId, driver.fcmToken, jobId, 'relisted');
+          }
+        });
+      }
+      delete allocatedJobs[id];
+    }
+  }
+
   refreshDriverList();
 }
 
@@ -560,6 +568,7 @@ function connectMQTT(){
     statusEl.textContent = 'MQTT: connected';
     logMsg('✅ Connected to MQTT', 'success');
     client.subscribe(`drivers/+/location`);
+    client.subscribe(`drivers/+/status`);
     client.subscribe(`jobs/+/status`);
     client.subscribe('drivers/tokens');
     resendOfflineJobs();
@@ -568,8 +577,26 @@ function connectMQTT(){
   client.on('message', (t, m) => {
     try {
       const j = JSON.parse(m.toString());
-      if (t.endsWith('/location')) updateDriver(t.split('/')[1], j.lat, j.lng, j);
-      
+      if (t.endsWith('/location')) {
+        const id = t.split('/')[1];
+        updateDriver(id, j.lat, j.lng, j);
+      }
+      if (t.endsWith('/status')) {
+        const id = t.split('/')[1];
+        if (id && j.status) {
+          if (!drivers[id]) {
+            drivers[id] = {
+              lat: PUB_COORDS.lat,
+              lng: PUB_COORDS.lng,
+              data: { status: j.status },
+              marker: L.marker([PUB_COORDS.lat, PUB_COORDS.lng]).addTo(map)
+            };
+          } else {
+            drivers[id].data = { ...(drivers[id].data || {}), status: j.status };
+          }
+          updateDriver(id, drivers[id].lat, drivers[id].lng, drivers[id].data);
+        }
+      }
       if (t === 'drivers/tokens') {
         const { driverId, fcmToken } = j;
         if (driverId && fcmToken) {
@@ -587,39 +614,21 @@ function connectMQTT(){
           logMsg(`✅ FCM token received for ${driverId}`, 'success');
         }
       }
-
       if (t.startsWith('jobs/') && t.endsWith('/status')) {
         const jobId = t.split('/')[1];
         if (visibleJobs[jobId]) {
-          if (j.status === 'bidding' && j.driver) {
-            if (!pendingJobs[jobId]) {
-              pendingJobs[jobId] = {
-                ...visibleJobs[jobId],
-                bidCount: 0,
-                bids: {},
-                timeoutId: setTimeout(() => finalizeBidding(jobId), BIDDING_WINDOW_MS)
-              };
-            }
-            if (!pendingJobs[jobId].bids[j.driver]) {
-              pendingJobs[jobId].bidCount += 1;
-              pendingJobs[jobId].bids[j.driver] = { lat: j.lat, lng: j.lng, timestamp: j.ts };
-              visibleJobs[jobId].status = `Bidding (${pendingJobs[jobId].bidCount})`;
-              visibleJobs[jobId].driver = '-';
-              updateJobsTable();
-              localStorage.setItem('visibleJobs', JSON.stringify(visibleJobs));
-              logMsg(`📥 Bid #${pendingJobs[jobId].bidCount} for ${jobId} from ${j.driver}`, 'info');
+          if (j.status === 'allocated' && j.driver) {
+            allocatedJobs[j.driver] = jobId;
+            logMsg(`🏆 Job ${jobId} allocated to ${j.driver}`, 'success');
+          } else if (j.status === 'completed' || j.status === 'abandoned') {
+            if (j.driver && allocatedJobs[j.driver] === jobId) {
+              delete allocatedJobs[j.driver];
             }
           }
-
-          if (j.status !== 'bidding') {
-            visibleJobs[jobId].status = j.status;
-            visibleJobs[jobId].driver = j.driver || '-';
-            updateJobsTable();
-            localStorage.setItem('visibleJobs', JSON.stringify(visibleJobs));
-            if (j.status === 'allocated') {
-              logMsg(`🏆 Job ${jobId} allocated to ${j.driver}`, 'success');
-            }
-          }
+          visibleJobs[jobId].status = j.status;
+          visibleJobs[jobId].driver = j.driver || '-';
+          updateJobsTable();
+          localStorage.setItem('visibleJobs', JSON.stringify(visibleJobs));
         }
       }
     } catch(e) { console.warn(e); }
@@ -645,14 +654,8 @@ function sendOrder() {
     lat: PUB_COORDS.lat,
     lng: PUB_COORDS.lng,
     status: 'queued',
-    driver: '-'
-  };
-
-  pendingJobs[jobId] = {
-    ...job,
-    bidCount: 0,
-    bids: {},
-    timeoutId: setTimeout(() => finalizeBidding(jobId), BIDDING_WINDOW_MS)
+    driver: '-',
+    excludedDrivers: []
   };
 
   visibleJobs = { [jobId]: job, ...visibleJobs };
@@ -664,7 +667,7 @@ function sendOrder() {
     
     const now = Date.now();
     Object.entries(drivers).forEach(([id, driver]) => {
-      if (!id || !driver.fcmToken) return;
+      if (!id || !driver.fcmToken || job.excludedDrivers.includes(id)) return;
       const isAllowed = debugAllowAll || allowedDrivers.includes(id);
       const isFresh = (now - (driver.lastActive || 0)) < 60_000;
       const inRange = distanceMeters(driver, PUB_COORDS) <= 10_000;
@@ -679,15 +682,35 @@ function sendOrder() {
     
     logMsg(`📤 Job ${jobId} sent`, 'info');
   } else {
-    const offlineQueue = safeParseJson('offlineQueue', []);
+    const offlineQueue = JSON.parse(localStorage.getItem('offlineQueue') || '[]');
     offlineQueue.push(job);
     localStorage.setItem('offlineQueue', JSON.stringify(offlineQueue));
     logMsg(`📦 Job ${jobId} queued (offline)`, 'warning');
   }
 }
 
+async function sendPushToDriver(driverId, fcmToken, jobId, reason) {
+  if (!driverId || !fcmToken) return;
+  try {
+    logMsg(`📤 Sending push to ${driverId}...`, 'info');
+    const response = await fetch(CLOUD_FUNCTION_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ driverId, fcmToken, jobId, reason })
+    });
+    const data = await response.json();
+    if (response.ok && data.messageId) {
+      logMsg(`✅ Push sent to ${driverId} (${data.messageId})`, 'success');
+    } else {
+      logMsg(`❌ Push failed for ${driverId}: ${data.error || JSON.stringify(data)}`, 'error');
+    }
+  } catch (err) {
+    logMsg(`❌ Push error for ${driverId}: ${err.message}`, 'error');
+  }
+}
+
 function resendOfflineJobs() {
-  const offlineQueue = safeParseJson('offlineQueue', []);
+  const offlineQueue = JSON.parse(localStorage.getItem('offlineQueue') || '[]');
   if (offlineQueue.length === 0) return;
   offlineQueue.forEach(j => {
     client.publish(`pubs/requests/${PUB_ID}`, JSON.stringify(j));
@@ -715,54 +738,6 @@ function updateJobsTable() {
   });
 }
 
-// === FINALIZE BIDDING ===
-function finalizeBidding(jobId) {
-  const job = pendingJobs[jobId];
-  if (!job) return;
-
-  let winner = null;
-  const bids = Object.entries(job.bids || {});
-
-  if (bids.length > 0) {
-    const valid = bids.filter(([id]) => {
-      const d = drivers[id];
-      return d && (d.data?.status === 'idle' || d.data?.status === 'available');
-    });
-
-    if (valid.length > 0) {
-      valid.sort(([aId, a], [bId, b]) => {
-        const distA = distanceMeters(a, {lat: job.lat, lng: job.lng});
-        const distB = distanceMeters(b, {lat: job.lat, lng: job.lng});
-        return distA - distB;
-      });
-      winner = valid[0][0];
-    }
-  }
-
-  if (winner) {
-    visibleJobs[jobId].status = 'allocated';
-    visibleJobs[jobId].driver = winner;
-    client.publish(`jobs/${jobId}/result/${winner}`, JSON.stringify({ result: "won" }));
-    bids.forEach(([driverId]) => {
-      if (driverId !== winner) {
-        client.publish(`jobs/${jobId}/result/${driverId}`, JSON.stringify({ result: "lost" }));
-      }
-    });
-    logMsg(`🏆 ${jobId} → ${winner}`, 'success');
-  } else {
-    visibleJobs[jobId].status = 'no_bids';
-    visibleJobs[jobId].driver = '-';
-    bids.forEach(([driverId]) => {
-      client.publish(`jobs/${jobId}/result/${driverId}`, JSON.stringify({ result: "no_valid_acceptance" }));
-    });
-    logMsg(`⏰ ${jobId}: no valid bids`, 'warning');
-  }
-
-  delete pendingJobs[jobId];
-  updateJobsTable();
-  localStorage.setItem('visibleJobs', JSON.stringify(visibleJobs));
-}
-
 // === SIMULATION ===
 function toggleSimDrivers(){
   simActive = !simActive;
@@ -777,6 +752,7 @@ function simLoop(){
     const lng = PUB_COORDS.lng + (Math.random() - 0.5) * 0.004;
     if (client && client.connected) {
       client.publish(`drivers/${id}/location`, JSON.stringify({ lat, lng, status: 'idle' }));
+      client.publish(`drivers/${id}/status`, JSON.stringify({ status: 'idle' }));
       if (!drivers[id]) {
         drivers[id] = {
           lat, lng,
@@ -825,6 +801,12 @@ const savedJobs = localStorage.getItem('visibleJobs');
 if (savedJobs) {
   try {
     Object.assign(visibleJobs, JSON.parse(savedJobs));
+    // Rebuild allocatedJobs map
+    Object.entries(visibleJobs).forEach(([jobId, job]) => {
+      if (job.status === 'allocated' && job.driver) {
+        allocatedJobs[job.driver] = jobId;
+      }
+    });
     updateJobsTable();
   } catch (e) {
     console.warn("Invalid saved jobs");
