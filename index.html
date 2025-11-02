@@ -7,9 +7,9 @@
 <meta name="theme-color" content="#1f6feb" />
 <link rel="manifest" href="manifest.json" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<!-- Firebase SDKs -->
+<!-- Firebase Compat SDK -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-functions-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js"></script>
 <style>
 :root{--accent:#1f6feb;--accent-2:#ff7b00;--bg:#f7fafc;--card:#ffffff;}
 html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial;background:var(--bg);color:#111;}
@@ -130,7 +130,6 @@ footer{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:
   overflow:hidden;
   transition:max-height 0.4s ease;
   padding:0 12px;
-  z-index:1001;
 }
 #logPanel.open{max-height:40vh;padding:12px;}
 #logOutput{
@@ -169,6 +168,7 @@ footer{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:
 <div class="main">
   <div id="map"></div>
   <div class="panel">
+    <!-- Static Booking Panel -->
     <div class="booking-panel">
       <div class="booking-row">
         <input type="text" id="customerName" placeholder="Customer name" />
@@ -178,6 +178,7 @@ footer{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:
       <button class="clear-btn" id="clearStorageBtn">🗑️ Clear All Data</button>
     </div>
 
+    <!-- Scrollable Content -->
     <div class="scroll-content">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
         <div style="font-weight:700">Nearby Drivers</div>
@@ -201,6 +202,7 @@ footer{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:
   <div>Topics: pubs/requests/{pub_id} • drivers/tokens • jobs/+/status</div>
 </footer>
 
+<!-- Admin Panel -->
 <div class="admin-panel" id="adminPanel">
   <span class="close-btn" id="closeAdmin">&times;</span>
   <h3>Admin Panel</h3>
@@ -214,6 +216,7 @@ footer{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:
   <div style="margin-top:12px;"><strong>Allowed:</strong><ul id="allowedDriversList"></ul></div>
 </div>
 
+<!-- Slide-up Log Panel -->
 <div id="logPanel">
   <h3 style="margin:0 0 8px 0;">📋 Activity Log</h3>
   <div id="logOutput"></div>
@@ -223,7 +226,7 @@ footer{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
 <script>
-// === FIREBASE INIT ===
+// ===== FIREBASE INIT FOR FCM =====
 const firebaseConfig = {
   apiKey: "AIzaSyBq1aN-KRtRW7S243ef7lz7fnZmlBcuN1s",
   authDomain: "cabunite.firebaseapp.com",
@@ -233,44 +236,101 @@ const firebaseConfig = {
   appId: "1:997924656033:web:1552b9f26a1af0878eb1e0"
 };
 firebase.initializeApp(firebaseConfig);
-const functions = firebase.functions(); // Auto-detects project
+const messaging = firebase.messaging();
+
+// Listen for foreground messages (optional)
+messaging.onMessage((payload) => {
+  console.log("📲 Foreground FCM:", payload);
+});
+
+// ===== FCM TOKEN HANDLING =====
+let fcmToken = null;
+
+async function requestFCMToken() {
+  try {
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+      logMsg("⚠️ Notifications blocked — FCM disabled");
+      return null;
+    }
+
+    // Register service worker
+    const registration = await navigator.serviceWorker.register(
+      '/blackcabunite/firebase-messaging-sw.js',
+      { scope: '/blackcabunite/' }
+    );
+
+    // Get token with correct VAPID key
+    fcmToken = await messaging.getToken({
+      vapidKey: "BMl7GKaqVFHFCn3hkjtrgguYUIM87Hfqd4bbN5lzBiWSjUjEFC8ToIi947P3GqyYnZmaHOJtVjwRHcUcCmuLbow",
+      serviceWorkerRegistration: registration
+    });
+
+    if (fcmToken) {
+      logMsg("✅ FCM token obtained");
+      publishFcmToken(); // publish to MQTT
+    } else {
+      logMsg("⚠️ No FCM token retrieved");
+    }
+    return fcmToken;
+  } catch (err) {
+    logMsg(`❌ FCM setup failed: ${err.message}`);
+    return null;
+  }
+}
+
+function publishFcmToken() {
+  if (!fcmToken || !client?.connected) {
+    logMsg("⏳ FCM: MQTT not ready or no token");
+    return;
+  }
+  const payload = {
+    driverId: 'coventry-rugby-pub', // or use dynamic ID if needed
+    fcmToken: fcmToken,
+    ts: Date.now()
+  };
+  client.publish('drivers/tokens', JSON.stringify(payload));
+  logMsg("📤 Published FCM token to 'drivers/tokens'");
+}
 
 // === CONFIG ===
 const PUB_ID = 'coventry-rugby-butts-park';
 const PUB_NAME = 'Coventry Rugby — Butts Park Arena';
 const PUB_COORDS = { lat: 52.407234, lng: -1.525504 };
-const BIDDING_WINDOW_MS = 60_000;
+const BIDDING_WINDOW_MS = 60_000; // 60 seconds
 
-// === NEW: Secure FCM via Callable Function ===
+// ===== FCM PUSH VIA CLOUD FUNCTION (HTTP) =====
+const CLOUD_FUNCTION_URL = 'https://europe-west2-cabunite.cloudfunctions.net/sendJobAlertHttp';
+
 async function sendPushToDriver(driverId, fcmToken, jobId, reason) {
-  if (!fcmToken || !jobId) {
-    logMsg(`❌ Skip FCM: missing token or jobId for ${driverId}`);
+  if (!driverId || typeof driverId !== 'string' || driverId.trim() === '') {
+    logMsg(`⚠️ Skip push: invalid driverId "${driverId}"`);
+    return;
+  }
+  driverId = driverId.trim();
+
+  if (!fcmToken) {
+    logMsg(`❌ No FCM token for ${driverId}`);
     return;
   }
 
   try {
-    logMsg(`📤 Sending FCM to ${driverId} via callable function...`);
-
-    const job = visibleJobs[jobId];
-    if (!job) {
-      logMsg(`❌ Job ${jobId} not found`);
-      return;
-    }
-
-    const sendAlert = functions.httpsCallable('sendJobAlert');
-    const result = await sendAlert({
-      fcmToken: fcmToken,
-      jobId: jobId,
-      pubName: job.pubName,
-      customerName: job.customerName,
-      customerPhone: job.customerPhone,
-      lat: job.lat,
-      lng: job.lng
+    logMsg(`📤 Sending push to ${driverId}...`);
+    const response = await fetch(CLOUD_FUNCTION_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ driverId, fcmToken, jobId, reason })
     });
 
-    logMsg(`✅ FCM sent to ${driverId} (${result.data.messageId})`);
-  } catch (error) {
-    logMsg(`❌ FCM error for ${driverId}: ${error.message}`);
+    const data = await response.json();
+
+    if (response.ok && data.messageId) {
+      logMsg(`✅ Push sent to ${driverId} (${data.messageId})`);
+    } else {
+      logMsg(`❌ Push failed for ${driverId}: ${data.error || JSON.stringify(data)}`);
+    }
+  } catch (err) {
+    logMsg(`❌ Push error for ${driverId}: ${err.message}`);
   }
 }
 
@@ -297,7 +357,7 @@ let simActive = false;
 
 // === DOM ===
 const el = {
-  connectionStatus: null,
+  connectionStatus: document.getElementById('connectionStatus'),
   driverList: document.getElementById('driverList'),
   customerName: document.getElementById('customerName'),
   customerPhone: document.getElementById('customerPhone'),
@@ -330,6 +390,7 @@ function logMsg(msg){
 el.logBtn.onclick = () => el.logPanel.classList.toggle('open');
 function clearLog(){ localStorage.removeItem('activityLog'); el.logOutput.textContent = ''; }
 
+// === CLEAR STORAGE BUTTON ===
 el.clearStorageBtn.onclick = () => {
   if (confirm("⚠️ Clear ALL data? This will remove jobs, drivers, logs, and settings.")) {
     localStorage.clear();
@@ -385,43 +446,6 @@ function refreshDriverList() {
   });
 }
 
-// === REASSIGN JOB FUNCTION ===
-function reassignJob(jobId, excludedDriverId) {
-  const job = visibleJobs[jobId];
-  if (!job) return;
-
-  job.status = 'reassigned';
-  job.driver = '-';
-  updateJobsTable();
-  localStorage.setItem('visibleJobs', JSON.stringify(visibleJobs));
-
-  const jobPayload = { ...job, ts: Date.now(), status: 'queued' };
-  if (client?.connected) {
-    client.publish(`pubs/requests/${PUB_ID}`, JSON.stringify(jobPayload));
-
-    const now = Date.now();
-    Object.entries(drivers).forEach(([id, drv]) => {
-      if (id === excludedDriverId || !drv.fcmToken) return;
-      const isAllowed = debugAllowAll || allowedDrivers.includes(id);
-      const isFresh = (now - (drv.lastActive || 0)) < 60_000;
-      const inRange = distanceMeters(drv, PUB_COORDS) <= 10_000;
-      let reason = isAllowed && isFresh && inRange ? 'eligible' : 
-                   !isAllowed ? 'not_allowed' : 
-                   !isFresh ? 'gps_old' : 'out_of_range';
-      sendPushToDriver(id, drv.fcmToken, jobId, reason);
-    });
-
-    logMsg(`🔄 Reassigned ${jobId} (excluded ${excludedDriverId})`);
-  }
-
-  pendingJobs[jobId] = {
-    ...jobPayload,
-    bidCount: 0,
-    bids: {},
-    timeoutId: setTimeout(() => finalizeBidding(jobId), BIDDING_WINDOW_MS)
-  };
-}
-
 // === MQTT ===
 let client = null;
 function connectMQTT(){
@@ -430,7 +454,6 @@ function connectMQTT(){
   statusEl.id = 'connectionStatus';
   statusEl.textContent = 'MQTT: connecting...';
   document.querySelector('.booking-panel').insertAdjacentElement('afterbegin', statusEl);
-  el.connectionStatus = statusEl;
   
   client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', { connectTimeout: 4000, reconnectPeriod: 1000 });
   client.on('connect', () => {
@@ -439,30 +462,16 @@ function connectMQTT(){
     client.subscribe(`drivers/+/location`);
     client.subscribe(`jobs/+/status`);
     client.subscribe('drivers/tokens');
-    client.subscribe('jobs/+/reject');
     resendOfflineJobs();
+    // Publish FCM token if ready
+    if (fcmToken) publishFcmToken();
   });
   client.on('message', (t, m) => {
     try {
       const j = JSON.parse(m.toString());
-      if (t.endsWith('/location')) {
-        const driverId = t.split('/')[1];
-        const payload = j;
-        updateDriver(driverId, payload.lat, payload.lng, payload);
-
-        if (payload.status === 'busy') {
-          const activeStatuses = ['allocated', 'accepted', 'en_route', 'reassigned'];
-          const assignedJob = Object.entries(visibleJobs).find(([id, job]) => 
-            job.driver === driverId && activeStatuses.includes(job.status)
-          );
-          if (assignedJob) {
-            const [jobId] = assignedJob;
-            logMsg(`⚠️ Driver ${driverId} went BUSY — reclaiming job ${jobId}`);
-            reassignJob(jobId, driverId);
-          }
-        }
-      }
+      if (t.endsWith('/location')) updateDriver(t.split('/')[1], j.lat, j.lng, j);
       
+      // FCM TOKEN HANDLING
       if (t === 'drivers/tokens') {
         const { driverId, fcmToken } = j;
         if (driverId && fcmToken) {
@@ -523,7 +532,7 @@ function sendOrder() {
   if (!name) return alert("Enter customer name");
   if (!phone) return alert("Enter customer phone");
 
-  const jobId = 'job-' + Math.random().toString(36).substr(2, 4);
+  const jobId = 'job-' + Math.random().toString(36).substr(2, 4); // short ID
   const job = {
     job: jobId,
     pubName: PUB_NAME,
@@ -536,6 +545,7 @@ function sendOrder() {
     driver: '-'
   };
 
+  // Initialize pendingJobs for bidding
   pendingJobs[jobId] = {
     ...job,
     bidCount: 0,
@@ -543,13 +553,16 @@ function sendOrder() {
     timeoutId: setTimeout(() => finalizeBidding(jobId), BIDDING_WINDOW_MS)
   };
 
+  // Insert at top for latest-on-top
   visibleJobs = { [jobId]: job, ...visibleJobs };
+
   localStorage.setItem('visibleJobs', JSON.stringify(visibleJobs));
   updateJobsTable();
 
   if (client && client.connected) {
     client.publish(`pubs/requests/${PUB_ID}`, JSON.stringify(job));
     
+    // Send FCM pushes
     const now = Date.now();
     Object.entries(drivers).forEach(([id, driver]) => {
       if (!id || !driver.fcmToken) return;
@@ -708,19 +721,12 @@ connectMQTT();
 updateJobsTable();
 refreshAllowedDriversList();
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('service-worker.js');
+  // Request FCM token after page loads
+  window.addEventListener('load', () => {
+    requestFCMToken();
+  });
 }
 el.logOutput.textContent = localStorage.getItem('activityLog') || '';
-
-document.addEventListener('click', (e) => {
-  const logPanel = el.logPanel;
-  const logBtn = el.logBtn;
-  if (logPanel.classList.contains('open')) {
-    if (!logPanel.contains(e.target) && e.target !== logBtn) {
-      logPanel.classList.remove('open');
-    }
-  }
-});
 </script>
 </body>
 </html>
