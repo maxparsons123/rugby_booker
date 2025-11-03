@@ -116,7 +116,7 @@ footer{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:
   padding:12px;
   border-radius:12px;
   box-shadow:0 6px 16px rgba(0,0,0,0.1);
-  z-index: 1001; /* Behind log panel */
+  z-index:1000;
   display:none;
   width:300px;
 }
@@ -168,7 +168,7 @@ footer{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 4000; /* Above log panel */
+  z-index: 4000;
 }
 #jobOptionsModal {
   background: white;
@@ -538,7 +538,7 @@ function updateDriver(id, lat, lng, meta = {}) {
   const newStatus = meta.status || 'idle';
 
   if (!drivers[id]?.marker) {
-    drivers[id] = { lat, lng,  meta, marker: L.marker([lat, lng]).addTo(map) };
+    drivers[id] = { lat, lng, data: meta, marker: L.marker([lat, lng]).addTo(map) };
   } else {
     drivers[id].marker.setLatLng([lat, lng]);
     drivers[id].lat = lat;
@@ -604,7 +604,7 @@ function connectMQTT(){
             drivers[id] = {
               lat: PUB_COORDS.lat,
               lng: PUB_COORDS.lng,
-               { status: j.status },
+              data: { status: j.status },
               marker: L.marker([PUB_COORDS.lat, PUB_COORDS.lng]).addTo(map)
             };
           } else {
@@ -620,7 +620,7 @@ function connectMQTT(){
             drivers[driverId] = {
               lat: PUB_COORDS.lat,
               lng: PUB_COORDS.lng,
-               { label: 'Taxi', status: 'idle' },
+              data: { label: 'Taxi', status: 'idle' },
               fcmToken: fcmToken
             };
             drivers[driverId].marker = L.marker([PUB_COORDS.lat, PUB_COORDS.lng]).addTo(map);
@@ -802,7 +802,7 @@ function simLoop(){
       if (!drivers[id]) {
         drivers[id] = {
           lat, lng,
-           { status: 'idle' },
+          data: { status: 'idle' },
           fcmToken: `simulated-token-${id}`,
           lastActive: Date.now()
         };
@@ -839,12 +839,7 @@ el.allowAllBtn.onclick = () => {
   logMsg('Debug allow all = ' + debugAllowAll, 'info');
 };
 
-// === NEW: STANDALONE CANCEL & RELIST FUNCTION ===
-/**
- * Cancels an allocated job for a driver and re-broadcasts it to other drivers
- * @param {string} driverId - The ID of the driver cancelling the job
- * @param {string} reason - Reason for cancellation (e.g., 'busy', 'offline', 'manual')
- */
+// === STANDALONE CANCEL & RELIST ===
 function cancelAndRelistJobForDriver(driverId, reason = 'cancelled') {
   if (!allocatedJobs[driverId]) {
     logMsg(`⚠️ No allocated job for ${driverId} to cancel`, 'warning');
@@ -854,14 +849,14 @@ function cancelAndRelistJobForDriver(driverId, reason = 'cancelled') {
   const jobId = allocatedJobs[driverId];
   const job = visibleJobs[jobId];
   if (!job) {
-    logMsg(`⚠️ Allocated job ${jobId} not found in visibleJobs`, 'error');
+    logMsg(`⚠️ Allocated job ${jobId} not found`, 'error');
     delete allocatedJobs[driverId];
     return;
   }
 
   logMsg(`⚠️ Driver ${driverId} ${reason} — cancelling job ${jobId}`, 'warning');
 
-  // 1. Notify server: job abandoned
+  // Publish abandoned status
   client.publish(`jobs/${jobId}/status`, JSON.stringify({
     job: jobId,
     driver: driverId,
@@ -870,7 +865,7 @@ function cancelAndRelistJobForDriver(driverId, reason = 'cancelled') {
     ts: Date.now()
   }));
 
-  // 2. Re-publish job with driver excluded
+  // Relist job excluding this driver
   const excluded = [...(job.excludedDrivers || []), driverId];
   const relistedJob = {
     ...job,
@@ -887,7 +882,7 @@ function cancelAndRelistJobForDriver(driverId, reason = 'cancelled') {
   client.publish(`pubs/requests/${PUB_ID}`, JSON.stringify(relistedJob));
   logMsg(`🔄 Job ${jobId} relisted (excluded ${driverId})`, 'info');
 
-  // 3. Send FCM to eligible drivers
+  // Send FCM to eligible drivers
   const now = Date.now();
   Object.entries(drivers).forEach(([id, driver]) => {
     if (!id || !driver.fcmToken || excluded.includes(id)) return;
@@ -899,11 +894,10 @@ function cancelAndRelistJobForDriver(driverId, reason = 'cancelled') {
     }
   });
 
-  // 4. Clean up tracking
   delete allocatedJobs[driverId];
 }
 
-// === CANCEL JOB FUNCTION ===
+// === CANCEL JOB ===
 function cancelJob(jobId) {
   const job = visibleJobs[jobId];
   if (!job) {
@@ -911,20 +905,17 @@ function cancelJob(jobId) {
     return;
   }
 
-  // Update local state
   job.status = 'cancelled_by_passenger';
   job.driver = '-';
   updateJobsTable();
   localStorage.setItem('visibleJobs', JSON.stringify(visibleJobs));
 
-  // Notify server
   client.publish(`jobs/${jobId}/status`, JSON.stringify({
     job: jobId,
     status: "cancelled_by_passenger",
     ts: Date.now()
   }));
 
-  // Notify driver if assigned
   if (job.driver && job.driver !== '-') {
     client.publish(`drivers/${job.driver}/presets`, JSON.stringify({
       presetType: "cancel_ride",
@@ -936,9 +927,8 @@ function cancelJob(jobId) {
   logMsg(`🗑️ Job ${jobId} cancelled by passenger`, 'warning');
 }
 
-// === SHOW JOB OPTIONS POPUP ===
+// === SHOW JOB OPTIONS ===
 function showJobOptions(job, jobId) {
-  // Create modal overlay
   const overlay = document.createElement('div');
   overlay.id = 'jobOptionsOverlay';
   overlay.style.cssText = `
@@ -990,7 +980,7 @@ function showJobOptions(job, jobId) {
   modal.appendChild(title);
   modal.appendChild(cancelButton);
 
-  // Add "Track Driver" button ONLY if allocated
+  // Add "Track Driver" if allocated
   if (job.status === 'allocated' && job.driver && job.driver !== '-') {
     const trackButton = document.createElement('button');
     trackButton.textContent = '📍 Track Driver';
@@ -1038,7 +1028,7 @@ const savedJobs = localStorage.getItem('visibleJobs');
 if (savedJobs) {
   try {
     Object.assign(visibleJobs, JSON.parse(savedJobs));
-    // Rebuild allocatedJobs map
+    // Rebuild allocatedJobs
     Object.entries(visibleJobs).forEach(([jobId, job]) => {
       if (job.status === 'allocated' && job.driver) {
         allocatedJobs[job.driver] = jobId;
