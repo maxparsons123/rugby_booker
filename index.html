@@ -890,7 +890,7 @@
       }
     }
 
-    function simLoop() {
+function simLoop() {
       Object.entries(simDrivers).forEach(([id, d]) => {
         // Simple random drift
         const newLat = d.lat + (Math.random() - 0.5) * 0.0001;
@@ -924,8 +924,10 @@
           }
         }
 
-        // Update location
-        updateDriver(id, newLat, newLng, { status: drivers[id]?.data.status || 'idle' });
+        // Update location (FIX APPLIED HERE)
+        updateDriver(id, newLat, newLng, { 
+          status: (drivers[id] && drivers[id].data) ? drivers[id].data.status : 'idle'
+        });
         d.lat = newLat;
         d.lng = newLng;
       });
@@ -951,3 +953,4 @@
   </script>
 </body>
 </html>
+
