@@ -768,17 +768,51 @@ function finalizeBidding(jobId) {
   const job = pendingJobs[jobId];
   if (!job) return;
 
-  const bids = Object.keys(job.bids || {});
-  if (bids.length === 0) {
-    visibleJobs[jobId].status = 'no_bids';
-    visibleJobs[jobId].driver = '-';
-    logMsg(`⏰ ${jobId}: no bids received`, 'warning');
-  } else {
-    visibleJobs[jobId].status = 'expired';
-    visibleJobs[jobId].driver = '-';
-    logMsg(`⏰ ${jobId}: bidding closed (${bids.length} bids)`, 'info');
+  let winner = null;
+  const bids = Object.entries(job.bids || {});
+
+  if (bids.length > 0) {
+    // ✅ FIXED: Check driver status correctly (inside the .data object)
+    const valid = bids.filter(([driverId]) => {
+      const driver = drivers[driverId];
+      // Check if driver exists AND their status is idle or available
+      return driver && (driver.data?.status === 'idle' || driver.data?.status === 'available');
+    });
+
+    if (valid.length > 0) {
+      // Sort by distance (closest wins)
+      valid.sort(([aId, aBid], [bId, bBid]) => {
+        const distA = distanceMeters(aBid, { lat: job.lat, lng: job.lng });
+        const distB = distanceMeters(bBid, { lat: job.lat, lng: job.lng });
+        return distA - distB;
+      });
+      winner = valid[0][0]; // Winner is the first (closest) valid bidder
+    }
   }
 
+  if (winner) {
+    visibleJobs[jobId].status = 'allocated';
+    visibleJobs[jobId].driver = winner;
+    // ✅ Publish result to winner
+    client.publish(`jobs/${jobId}/result/${winner}`, JSON.stringify({ result: "won" }));
+    // ✅ Publish result to losers
+    bids.forEach(([driverId]) => {
+      if (driverId !== winner) {
+        client.publish(`jobs/${jobId}/result/${driverId}`, JSON.stringify({ result: "lost" }));
+      }
+    });
+    logMsg(`🏆 ${jobId} → ${winner} (allocated)`);
+  } else {
+    visibleJobs[jobId].status = 'no_bids_received'; // More descriptive than 'no_bids'
+    visibleJobs[jobId].driver = '-';
+    // ✅ Publish "no valid acceptance" to all bidders
+    bids.forEach(([driverId]) => {
+      client.publish(`jobs/${jobId}/result/${driverId}`, JSON.stringify({ result: "no_valid_acceptance" }));
+    });
+    logMsg(`⏰ ${jobId}: no valid bids received (no active drivers bid)`);
+  }
+
+  // Cleanup pending job data
   delete pendingJobs[jobId];
   updateJobsTable();
   localStorage.setItem('visibleJobs', JSON.stringify(visibleJobs));
@@ -1050,3 +1084,4 @@ if ('serviceWorker' in navigator) {
 </script>
 </body>
 </html>
+
