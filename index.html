@@ -1,801 +1,204 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <title>Black Cab Unite — Coventry Rugby (Butts Park Arena) v2.0-Fixed</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <meta name="theme-color" content="#1f6feb" />
-  <link rel="manifest" href="manifest.json" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-  <style>
-    :root{--accent:#1f6feb;--accent-2:#ff7b00;--bg:#f7fafc;--card:#ffffff;}
-    html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:#111;}
-    .container{display:flex;flex-direction:column;height:100vh;gap:12px;padding:12px;box-sizing:border-box;overflow:hidden;}
-    header{display:flex;align-items:center;justify-content:space-between;gap:12px;}
-    .brand{display:flex;align-items:center;gap:10px;}
-    .brand h1{margin:0;font-size:20px;letter-spacing:0.5px;}
-    .small{font-size:13px;color:#666;}
-    .tablet-info{text-align:right;font-size:13px;color:#444;}
-    .main{display:flex;gap:12px;flex:1;min-height:0;}
-    #map{flex:1;border-radius:12px;box-shadow:0 6px 16px rgba(0,0,0,0.08);}
-    .panel{
-      width:360px;
-      min-width:260px;
-      background:var(--card);
-      border-radius:12px;
-      box-shadow:0 6px 16px rgba(0,0,0,0.06);
-      display:flex;
-      flex-direction:column;
-      overflow:hidden;
-    }
-    /* Static Booking Panel */
-    .booking-panel{
-      padding:12px;
-      border-bottom:1px solid #eee;
-      background:#f9f9f9;
-      display:flex;
-      flex-direction:column;
-      gap:8px;
-    }
-    .booking-row{
-      display:flex;
-      gap:8px;
-    }
-    .booking-row input{
-      width:100%;
-      padding:8px;
-      border-radius:8px;
-      border:1px solid #ccc;
-      font-size:15px;
-    }
-    .order-btn{
-      background:var(--accent);
-      color:white;
-      border:none;
-      padding:14px;
-      font-size:17px;
-      font-weight:600;
-      border-radius:10px;
-      cursor:pointer;
-      width:100%;
-      box-shadow:0 4px 8px rgba(31,111,235,0.2);
-    }
-    .order-btn:active{transform:translateY(1px);}
-    /* Scrollable Content */
-    .scroll-content{
-      flex:1;
-      overflow-y:auto;
-      padding:20px;
-    }
-    .clear-btn{
-      background:#dc3545;
-      color:white;
-      border:none;
-      padding:8px 12px;
-      border-radius:8px;
-      cursor:pointer;
-      font-size:13px;
-      margin-top:8px;
-      width:100%;
-    }
-    .clear-btn:hover{background:#c82333;}
-    .status{padding:10px;border-radius:8px;background:#f2f6ff;color:#08306b;font-weight:600;}
-    .driver-list{display:flex;flex-direction:column;gap:8px;max-height:140px;overflow:auto;}
-    .driver-item{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px;border-radius:8px;background:#fff;border:1px solid #f0f0f0;}
-    .small-btn{
-      border:1px solid #ddd;
-      background:#fff;
-      padding:6px 10px;
-      border-radius:8px;
-      cursor:pointer;
-      font-size:13px;
-    }
-    table{width:100%;border-collapse:collapse;}
-    th,td{
-      padding:8px 4px;
-      text-align:left;
-      border-bottom:1px solid #eee;
-      font-size:14px;
-    }
-    th{background:#f0f0f0;font-size:13px;}
-    tbody td{font-weight:600;}
-    footer{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:#666;}
-    .admin-panel{
-      position:absolute;
-      top:10px;
-      left:50%;
-      transform:translateX(-50%);
-      background:#fff;
-      padding:12px;
-      border-radius:12px;
-      box-shadow:0 6px 16px rgba(0,0,0,0.1);
-      z-index:1000;
-      display:none;
-      width:300px;
-    }
-    .admin-panel h3{margin:0 0 10px 0;font-size:16px;}
-    .admin-panel .close-btn{float:right;cursor:pointer;color:#555;}
-    #logPanel{
-      position:fixed;
-      bottom:0;
-      left:0;
-      right:0;
-      background:#fff;
-      border-top:2px solid var(--accent);
-      box-shadow:0 -4px 16px rgba(0,0,0,0.2);
-      max-height:0;
-      overflow:hidden;
-      transition:max-height 0.4s ease;
-      padding:0 12px;
-      z-index: 2000;
-    }
-    #logPanel.open{max-height:40vh;padding:12px;}
-    #logOutput{
-      font-family:monospace;
-      font-size:12px;
-      white-space:pre-wrap;
-      background:#f9fafc;
-      padding:8px;
-      border-radius:8px;
-      height:100%;
-      overflow:auto;
-    }
-    @media(max-width:900px){
-      .main{flex-direction:column;}
-      .panel{width:100%;}
-      .booking-row input{font-size:14px;}
-    }
-  </style>
+<meta charset="utf-8" />
+<title>Black Cab Unite — Coventry Rugby (Butts Park Arena)</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+:root{--accent:#1f6feb;--bg:#f7fafc;--card:#fff;}
+html,body{margin:0;height:100%;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:var(--bg);}
+.container{display:flex;flex-direction:column;height:100vh;gap:12px;padding:12px;box-sizing:border-box;}
+header{display:flex;align-items:center;justify-content:space-between;}
+.brand{display:flex;align-items:center;gap:8px;}
+.main{flex:1;display:flex;gap:12px;min-height:0;}
+#map{flex:1;border-radius:12px;box-shadow:0 6px 16px rgba(0,0,0,0.1);}
+.panel{width:360px;min-width:260px;background:var(--card);border-radius:12px;box-shadow:0 6px 16px rgba(0,0,0,0.06);
+display:flex;flex-direction:column;overflow:hidden;}
+.booking-panel{padding:12px;border-bottom:1px solid #eee;background:#f9f9f9;display:flex;flex-direction:column;gap:8px;}
+.booking-row{display:flex;gap:8px;}
+.booking-row input{flex:1;padding:8px;border-radius:8px;border:1px solid #ccc;}
+.order-btn{background:var(--accent);color:#fff;border:none;padding:12px;font-size:16px;font-weight:600;
+border-radius:10px;cursor:pointer;}
+.scroll-content{flex:1;overflow:auto;padding:12px;}
+.driver-item{display:flex;justify-content:space-between;align-items:center;
+border:1px solid #eee;border-radius:8px;padding:6px;margin-bottom:6px;}
+#logOutput{font-family:monospace;font-size:12px;white-space:pre-wrap;background:#f8f9fa;padding:8px;border-radius:8px;}
+.small-btn{border:1px solid #ccc;background:#fff;padding:6px 10px;border-radius:8px;cursor:pointer;font-size:13px;}
+</style>
 </head>
 <body>
-  <div class="container">
-    <header>
-      <div class="brand">
-        <div style="width:44px;height:44px;border-radius:8px;background:linear-gradient(135deg,#004400,#228B22);display:flex;align-items:center;justify-content:center;color:white;font-weight:bold;">🏉</div>
-        <div>
-          <h1>Black Cab Unite — Coventry Rugby</h1>
-          <div class="small">Butts Park Arena</div>
-        </div>
-      </div>
-      <div class="tablet-info">
-        <button class="small-btn" id="logBtn">View Log</button>
-        <button class="small-btn" id="adminBtn">Admin Panel</button>
-      </div>
-    </header>
-
-    <div class="main">
-      <div id="map"></div>
-      <div class="panel">
-        <!-- Static Booking Panel -->
-        <div class="booking-panel">
-          <div class="booking-row">
-            <input type="text" id="customerName" placeholder="Customer name" />
-            <input type="tel" id="customerPhone" placeholder="+44 7123 456789" />
-          </div>
-          <button class="order-btn" id="orderBtn">ORDER TAXI</button>
-          <button class="clear-btn" id="clearStorageBtn">🗑️ Clear All Data</button>
-        </div>
-
-        <!-- Scrollable Content -->
-        <div class="scroll-content">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-            <div style="font-weight:700">Nearby Drivers</div>
-            <button class="small-btn" id="simulateBtn">Toggle Sim Drivers</button>
-          </div>
-          <div class="driver-list" id="driverList"></div>
-
-          <div style="margin-top:16px;">
-            <div style="font-weight:700;margin-bottom:8px;">Current Jobs</div>
-            <table id="jobsTable">
-              <thead><tr><th>ID</th><th>Name</th><th>Phone</th><th>Driver</th><th>Status</th></tr></thead>
-              <tbody></tbody>
-            </table>
-          </div>
-        </div>
-      </div>
+<div class="container">
+<header>
+  <div class="brand">
+    <div style="width:44px;height:44px;border-radius:8px;background:linear-gradient(135deg,#004400,#228B22);
+    display:flex;align-items:center;justify-content:center;color:white;font-weight:bold;">🚕</div>
+    <div>
+      <h2 style="margin:0;">Black Cab Unite — Coventry Rugby</h2>
+      <small>Butts Park Arena</small>
     </div>
-
-    <footer>
-      <div>Black Cab Unite — Coventry Rugby Club</div>
-      <div>Topics: pubs/requests/{pub_id} • drivers/tokens • jobs/+/status</div>
-    </footer>
-
-    <!-- Admin Panel -->
-    <div class="admin-panel" id="adminPanel">
-      <span class="close-btn" id="closeAdmin">&times;</span>
-      <h3>Admin Panel</h3>
-      <div>
-        <label>Driver ID:</label>
-        <input type="text" id="adminDriverId" placeholder="driver-01" />
-        <button class="small-btn" id="addDriverBtn">Add</button>
-        <button class="small-btn" id="removeDriverBtn">Remove</button>
-      </div>
-      <div style="margin-top:8px;"><button class="small-btn" id="allowAllBtn">Debug: Allow All</button></div>
-      <div style="margin-top:12px;"><strong>Allowed:</strong><ul id="allowedDriversList"></ul></div>
-    </div>
-
-    <!-- Slide-up Log Panel -->
-    <div id="logPanel">
-      <h3 style="margin:0 0 8px 0;">📋 Activity Log</h3>
-      <div id="logOutput"></div>
-      <button class="small-btn" onclick="clearLog()">Clear Log</button>
-    </div>
-
   </div>
+  <div>
+    <button class="small-btn" id="logBtn">Log</button>
+  </div>
+</header>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
-  <script>
-    // === CONFIG ===
- const PUB_ID = 'coventry-rugby-butts-park';
-    const PUB_NAME = 'Coventry Rugby — Butts Park Arena';
-    const PUB_COORDS = { lat: 52.407234, lng: -1.525504 };
-    const BIDDING_WINDOW_MS = 60_000; // 60 seconds
+<div class="main">
+  <div id="map"></div>
+  <div class="panel">
+    <div class="booking-panel">
+      <div class="booking-row">
+        <input id="customerName" placeholder="Customer name">
+        <input id="customerPhone" placeholder="+44 7123 456789">
+      </div>
+      <button id="orderBtn" class="order-btn">ORDER TAXI</button>
+    </div>
+    <div class="scroll-content">
+      <h4>Nearby Drivers</h4>
+      <div id="driverList"></div>
+      <h4>Jobs</h4>
+      <table style="width:100%;border-collapse:collapse;">
+        <thead><tr><th>ID</th><th>Name</th><th>Driver</th><th>Status</th></tr></thead>
+        <tbody id="jobsBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
 
-    // ===== FCM PUSH VIA CLOUD FUNCTION (HTTP) =====
-    const CLOUD_FUNCTION_URL = 'https://europe-west2-cabunite.cloudfunctions.net/sendJobAlertHttp';
+<div id="logOutput"></div>
+</div>
 
-    async function sendPushToDriver(driverId, fcmToken, jobId, reason) {
-      if (!driverId || typeof driverId !== 'string' || driverId.trim() === '') {
-        logMsg(`⚠️ Skip push: invalid driverId "${driverId}"`);
-        return;
-      }
-      driverId = driverId.trim();
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+<script>
+const PUB_ID = 'coventry-rugby-butts-park';
+const PUB_COORDS = {lat:52.407234,lng:-1.525504};
+const BID_WINDOW = 60_000; // 1 min
+const CONFIRM_WINDOW = 20_000; // 20 s to confirm
 
-      if (!fcmToken) {
-        logMsg(`❌ No FCM token for ${driverId}`);
-        return;
-      }
+const drivers = {};
+const visibleJobs = {};
+const pendingJobs = {};
 
-      try {
-        logMsg(`📤 Sending push to ${driverId}...`);
-        const response = await fetch(CLOUD_FUNCTION_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ driverId, fcmToken, jobId, reason })
-        });
+const el = {
+ map:null,driverList:document.getElementById('driverList'),
+ jobsBody:document.getElementById('jobsBody'),
+ name:document.getElementById('customerName'),
+ phone:document.getElementById('customerPhone'),
+ orderBtn:document.getElementById('orderBtn'),
+ log:document.getElementById('logOutput')
+};
 
-        const data = await response.json();
+// logging
+function logMsg(msg){const t=new Date().toLocaleTimeString();el.log.textContent+=`[${t}] ${msg}\n`;el.log.scrollTop=el.log.scrollHeight;}
 
-        if (response.ok && data.messageId) {
-          logMsg(`✅ Push sent to ${driverId} (${data.messageId})`);
-        } else {
-          logMsg(`❌ Push failed for ${driverId}: ${data.error || JSON.stringify(data)}`);
-        }
-      } catch (err) {
-        logMsg(`❌ Push error for ${driverId}: ${err.message}`);
-      }
-    }
+// map
+const map=L.map('map').setView([PUB_COORDS.lat,PUB_COORDS.lng],15);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+L.marker([PUB_COORDS.lat,PUB_COORDS.lng]).addTo(map).bindPopup('Coventry Rugby');
 
-    // === SAFE JSON PARSING ===
-    function safeParseJson(key, fallback) {
-      const item = localStorage.getItem(key);
-      if (item === null || item === '') return fallback;
-      try {
-        return JSON.parse(item);
-      } catch (e) {
-        console.warn(`Invalid JSON in localStorage.${key}:`, item);
-        localStorage.removeItem(key);
-        return fallback;
-      }
-    }
+// helpers
+function dist(a,b){const R=6371000,toRad=x=>x*Math.PI/180;
+const φ1=toRad(a.lat),φ2=toRad(b.lat),Δφ=toRad(b.lat-a.lat),Δλ=toRad(b.lng-a.lng);
+const h=Math.sin(Δφ/2)**2+Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
+return R*2*Math.atan2(Math.sqrt(h),Math.sqrt(1-h));}
 
-    // === STATE ===
-    const drivers = {};
-    const pendingJobs = {}; // { jobId: { ...jobData, bidCount, bids: { driverId: {lat, lng, ts} }, timeoutId } }
-    let visibleJobs = safeParseJson('visibleJobs', {});
-    let allowedDrivers = safeParseJson('allowedDrivers', []);
-    let debugAllowAll = false;
-    let simActive = false;
+// MQTT
+let client=null;
+function connectMQTT(){
+ client=mqtt.connect('wss://broker.hivemq.com:8884/mqtt',{reconnectPeriod:2000});
+ client.on('connect',()=>{logMsg('MQTT connected');client.subscribe('drivers/+/location');client.subscribe('jobs/+/status');});
+ client.on('message',(topic,msg)=>{
+  try{const j=JSON.parse(msg.toString());
+   if(topic.endsWith('/location'))updateDriver(topic.split('/')[1],j.lat,j.lng,j);
+   if(topic.startsWith('jobs/')&&topic.endsWith('/status'))handleBid(topic.split('/')[1],j);
+  }catch(e){console.warn(e);}
+ });
+}
+function updateDriver(id,lat,lng,data){
+ if(!drivers[id])drivers[id]={lat,lng,marker:L.marker([lat,lng]).addTo(map),data};
+ else{drivers[id].lat=lat;drivers[id].lng=lng;drivers[id].marker.setLatLng([lat,lng]);}
+ refreshDriverList();
+}
+function refreshDriverList(){
+ el.driverList.innerHTML='';
+ Object.entries(drivers).forEach(([id,d])=>{
+  const distm=dist(d,PUB_COORDS);
+  el.driverList.innerHTML+=`<div class="driver-item"><b>${id}</b><span>${distm<1000?distm.toFixed(0)+'m':(distm/1000).toFixed(1)+' km'}</span></div>`;
+ });
+}
 
-    // === DOM ELEMENTS ===
-    const el = {
-      connectionStatus: document.getElementById('connectionStatus'),
-      driverList: document.getElementById('driverList'),
-      customerName: document.getElementById('customerName'),
-      customerPhone: document.getElementById('customerPhone'),
-      orderBtn: document.getElementById('orderBtn'),
-      simulateBtn: document.getElementById('simulateBtn'),
-      jobsTable: document.querySelector("#jobsTable tbody"),
-      adminPanel: document.getElementById('adminPanel'),
-      closeAdmin: document.getElementById('closeAdmin'),
-      adminBtn: document.getElementById('adminBtn'),
-      adminDriverId: document.getElementById('adminDriverId'),
-      addDriverBtn: document.getElementById('addDriverBtn'),
-      removeDriverBtn: document.getElementById('removeDriverBtn'),
-      allowAllBtn: document.getElementById('allowAllBtn'),
-      allowedDriversList: document.getElementById('allowedDriversList'),
-      logBtn: document.getElementById('logBtn'),
-      logPanel: document.getElementById('logPanel'),
-      logOutput: document.getElementById('logOutput'),
-      clearStorageBtn: document.getElementById('clearStorageBtn')
-    };
+// job creation
+function sendOrder(){
+ const name=el.name.value.trim(),phone=el.phone.value.trim();
+ if(!name||!phone)return alert('Enter customer info');
+ const jobId='job-'+Math.random().toString(36).slice(2,6);
+ const job={id:jobId,customer:name,phone,status:'bidding',driver:'-',lat:PUB_COORDS.lat,lng:PUB_COORDS.lng};
+ visibleJobs[jobId]=job;updateJobs();logMsg('📢 Broadcasting job '+jobId);
+ client.publish(`pubs/requests/${PUB_ID}`,JSON.stringify(job));
+ pendingJobs[jobId]={...job,bids:{},timer:setTimeout(()=>finalizeBidding(jobId),BID_WINDOW)};
+}
+function handleBid(jobId,data){
+ if(!pendingJobs[jobId])return;
+ const bidder=data.driver;
+ if(!pendingJobs[jobId].bids[bidder]){
+  pendingJobs[jobId].bids[bidder]={lat:data.lat,lng:data.lng,ts:data.ts||Date.now()};
+  logMsg(`📥 Bid from ${bidder} for ${jobId}`);
+ }
+}
+function updateJobs(){
+ el.jobsBody.innerHTML='';
+ Object.values(visibleJobs).forEach(j=>{
+  el.jobsBody.innerHTML+=`<tr><td>${j.id}</td><td>${j.customer}</td><td>${j.driver}</td><td>${j.status}</td></tr>`;
+ });
+}
 
-    // === LOGGING ===
-    function logMsg(msg){
-      const ts = new Date().toLocaleTimeString();
-      const entry = `[${ts}] ${msg}\n`;
-      const logs = (localStorage.getItem('activityLog') || '') + entry;
-      localStorage.setItem('activityLog', logs);
-      el.logOutput.textContent = logs;
-      if (el.logOutput.parentElement.classList.contains('open')) {
-        el.logOutput.scrollTop = el.logOutput.scrollHeight;
-      }
-    }
+// allocation + rebid cycle
+function finalizeBidding(jobId){
+ const job=pendingJobs[jobId];if(!job)return;
+ const bids=Object.entries(job.bids);
+ if(!bids.length){logMsg(`⏰ No bids for ${jobId}`);visibleJobs[jobId].status='no_bids';updateJobs();return;}
+ bids.sort(([,a],[,b])=>dist(a,{lat:job.lat,lng:job.lng})-dist(b,{lat:job.lat,lng:job.lng}));
+ const winner=bids[0][0];
+ visibleJobs[jobId].driver=winner;visibleJobs[jobId].status='awaiting confirm';updateJobs();
+ logMsg(`🏁 Provisional winner ${winner} for ${jobId}`);
+ client.publish(`jobs/${jobId}/result/${winner}`,JSON.stringify({result:'won_pending'}));
+ setTimeout(()=>checkConfirmation(jobId,winner,bids.slice(1)),CONFIRM_WINDOW);
+}
+function checkConfirmation(jobId,winner,others){
+ const job=visibleJobs[jobId];
+ if(!job)return;
+ // in real system driver would confirm via jobs/{jobId}/status
+ // simulate confirmation failure 1/2 chance
+ const confirmed=Math.random()>0.5;
+ if(confirmed){
+  job.status='allocated';logMsg(`✅ ${winner} confirmed ${jobId}`);
+  client.publish(`jobs/${jobId}/result/${winner}`,JSON.stringify({result:'confirmed'}));
+ }else{
+  logMsg(`❌ ${winner} failed to confirm ${jobId} → rebidding`);
+  if(others.length){
+   pendingJobs[jobId]={...job,bids:Object.fromEntries(others),timer:setTimeout(()=>finalizeBidding(jobId),10_000)};
+   visibleJobs[jobId].status='rebidding';updateJobs();
+  }else{
+   job.status='unfulfilled';updateJobs();logMsg(`🚫 No backup drivers for ${jobId}`);
+  }
+ }
+}
 
-    el.logBtn.onclick = () => el.logPanel.classList.toggle('open');
-    function clearLog(){ localStorage.removeItem('activityLog'); el.logOutput.textContent = ''; }
+// simulate drivers
+function simulateDrivers(){
+ for(let i=1;i<=3;i++){
+  const id=`driver-${i}`;
+  const lat=PUB_COORDS.lat+(Math.random()-0.5)*0.004,lng=PUB_COORDS.lng+(Math.random()-0.5)*0.004;
+  updateDriver(id,lat,lng,{status:'idle'});
+  client.publish(`drivers/${id}/location`,JSON.stringify({lat,lng,status:'idle'}));
+ }
+}
 
-    // === CLEAR STORAGE BUTTON ===
-    el.clearStorageBtn.onclick = () => {
-      if (confirm("⚠️ Clear ALL data? This will remove jobs, drivers, logs, and settings.")) {
-        localStorage.clear();
-        visibleJobs = {};
-        pendingJobs = {};
-        drivers = {};
-        updateJobsTable();
-        el.driverList.innerHTML = '';
-        el.logOutput.textContent = '';
-        logMsg("🗑️ All local storage cleared");
-      }
-    };
-
-    // === MAP SETUP ===
-    const map = L.map('map').setView([PUB_COORDS.lat, PUB_COORDS.lng], 15);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-    L.marker([PUB_COORDS.lat, PUB_COORDS.lng]).addTo(map).bindPopup(PUB_NAME);
-
-    // === HELPERS ===
-    function distanceMeters(a, b) {
-      const R = 6371000;
-      const toRad = x => x * Math.PI / 180;
-      const φ1 = toRad(a.lat), φ2 = toRad(b.lat);
-      const Δφ = toRad(b.lat - a.lat), Δλ = toRad(b.lng - a.lat);
-      const a_ = Math.sin(Δφ/2)**2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2)**2;
-      return R * 2 * Math.atan2(Math.sqrt(a_), Math.sqrt(1 - a_));
-    }
-
-    function getColorForDriver(driverId) {
-      let hash = 0;
-      for (let i = 0; i < driverId.length; i++) {
-        hash = driverId.charCodeAt(i) + ((hash << 5) - hash);
-      }
-      const c = (hash & 0x00FFFFFF).toString(16).toUpperCase();
-      return "#" + "00000".substring(0, 6 - c.length) + c;
-    }
-
-    // === DRIVER MANAGEMENT ===
-    function updateDriver(id, lat, lng, meta = {}) {
-      if (!id) return;
-      if (!drivers[id]?.marker) {
-        const color = getColorForDriver(id);
-        drivers[id] = {
-          lat, lng,
-           data: { status: 'idle', ...meta }, // ✅ FIXED: Correctly assigns object to 'data' property
-          marker: L.circleMarker([lat, lng], { color, radius: 8 }).addTo(map)
-        };
-        drivers[id].marker.bindPopup(id);
-      } else {
-        drivers[id].marker.setLatLng([lat, lng]);
-        drivers[id].data = { ...drivers[id].data, ...meta };
-        drivers[id].lat = lat;
-        drivers[id].lng = lng;
-      }
-      drivers[id].lastActive = Date.now();
-      refreshDriverList();
-    }
-
-    function refreshDriverList() {
-      el.driverList.innerHTML = '';
-      Object.entries(drivers).forEach(([id, d]) => {
-        const dist = distanceMeters(d, PUB_COORDS);
-        const div = document.createElement('div');
-        div.className = 'driver-item';
-        div.innerHTML = `
-          <div><b>${id}</b><div class="small">${d.data?.status || 'idle'}</div></div>
-          <div>${dist < 1000 ? dist.toFixed(0) + 'm' : (dist / 1000).toFixed(1) + 'km'}</div>
-        `;
-        el.driverList.appendChild(div);
-      });
-    }
-
-    // === MQTT ===
-    let client = null;
-    function connectMQTT(){
-      const statusEl = document.createElement('div');
-      statusEl.className = 'status';
-      statusEl.id = 'connectionStatus';
-      statusEl.textContent = 'MQTT: connecting...';
-      document.querySelector('.booking-panel').insertAdjacentElement('afterbegin', statusEl);
-      
-      client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', { connectTimeout: 4000, reconnectPeriod: 1000 });
-      client.on('connect', () => {
-        statusEl.textContent = 'MQTT: connected';
-        logMsg('✅ Connected to MQTT');
-        client.subscribe(`drivers/+/location`);
-        client.subscribe(`drivers/+/status`); // 👈 SUBSCRIBE TO DRIVER STATUS
-        client.subscribe(`jobs/+/status`);
-        client.subscribe('drivers/tokens');
-        client.subscribe(`pubs/requests/${PUB_ID}`); // Explicit topic for this pub
-        resendOfflineJobs();
-      });
-
-      client.on('message', (topic, msg) => {
-        try {
-          const data = JSON.parse(msg.toString());
-          logMsg(`📡 ${topic} -> ${JSON.stringify(data)}`);
-
-          if (topic.endsWith('/location')) {
-            const id = topic.split('/')[1];
-            updateDriver(id, data.lat, data.lng, data);
-          }
-
-          // FCM TOKEN HANDLING
-          if (topic === 'drivers/tokens') {
-            const { driverId, fcmToken } = data;
-            if (driverId && fcmToken) {
-              if (!drivers[driverId]) {
-                drivers[driverId] = {
-                  lat: PUB_COORDS.lat,
-                  lng: PUB_COORDS.lng,
-                   data: { label: 'Taxi', status: 'idle' }, // ✅ FIXED: Correctly assigns object to 'data' property
-                  fcmToken: fcmToken,
-                  lastActive: Date.now()
-                };
-                const color = getColorForDriver(driverId);
-                drivers[driverId].marker = L.circleMarker([PUB_COORDS.lat, PUB_COORDS.lng], { color, radius: 8 }).addTo(map);
-                drivers[driverId].marker.bindPopup(driverId);
-              } else {
-                drivers[driverId].fcmToken = fcmToken;
-                drivers[driverId].lastActive = Date.now();
-              }
-              logMsg(`✅ FCM token received for ${driverId}`);
-            }
-          }
-
-          // NEW JOBS
-          if (topic.startsWith("pubs/requests/")) {
-            if (!seenJobIds.has(data.job)) {
-              pendingJobs.push({ ...data, receivedAt: Date.now() });
-              localStorage.setItem(`pending_jobs_${DRIVER_ID}`, JSON.stringify(pendingJobs));
-              addJobToHistory(data, 'queued');
-              if (driverPresence === 'available' && !isJobActive) {
-                showJobPanel(data);
-              } else if (driverPresence === 'busy') {
-                speakFeedback("New job queued. You are set to busy.");
-                const btn = document.getElementById('menuBtn');
-                btn.style.transform = 'scale(1.1)';
-                btn.style.backgroundColor = '#ff6b35';
-                setTimeout(() => {
-                  btn.style.transform = '';
-                  btn.style.backgroundColor = '#FFD700';
-                }, 600);
-              }
-            } else {
-              console.log("⏭️ Skipping duplicate job (MQTT):", data.job);
-            }
-          }
-
-          // DRIVER STATUS CHANGES (for re-allocation)
-          if (topic.startsWith("drivers/") && topic.endsWith("/status")) {
-            const driverId = topic.split('/')[1];
-            if (driverId === 'tokens') return; // Ignore tokens topic itself
-            if (data.driver !== driverId) return; // Ensure data matches topic
-
-            // Update local driver status
-            if (!drivers[driverId]) {
-              drivers[driverId] = {
-                 data: { status: data.status || 'idle' }, // ✅ FIXED: Correctly assigns object to 'data' property
-                fcmToken: null,
-                lastActive: Date.now(),
-                activeJobId: null
-              };
-            } else {
-              drivers[driverId].data.status = data.status || 'idle';
-            }
-            drivers[driverId].lastActive = data.ts || Date.now();
-            refreshDriverList();
-            logMsg(`📊 Driver ${driverId} status updated to: ${data.status || 'idle'}`);
-
-            // ✅ CRITICAL: CHECK IF DRIVER WITH ALLOCATED JOB WENT BUSY/OFFLINE
-            const assignedJobId = Object.keys(visibleJobs).find(jobId => {
-              const job = visibleJobs[jobId];
-              return job.driver === driverId && job.status === 'allocated';
-            });
-
-            if (assignedJobId) {
-              const job = visibleJobs[assignedJobId];
-              if (data.status === 'busy' || data.status === 'offline') {
-                logMsg(`⚠️ Driver ${driverId} (allocated to job ${assignedJobId}) went ${data.status}. Re-allocating job.`);
-                // Publish "driver unavailable" to all bidders for this job
-                const allBidders = Object.keys(job.originalBidders || {});
-                allBidders.forEach(bidderId => {
-                  client.publish(`jobs/${assignedJobId}/result/${bidderId}`, JSON.stringify({ result: "driver_unavailable" }));
-                });
-                // Clear driver from job record and reset status
-                job.driver = '-';
-                job.status = 're-allocating';
-                updateJobsTable();
-                localStorage.setItem('visibleJobs', JSON.stringify(visibleJobs));
-                // Start re-allocation process
-                reAllocateJob(job);
-              }
-            }
-          }
-
-          // JOB STATUS UPDATES (BIDDING, COMPLETION, ETC.)
-          if (topic.startsWith('jobs/') && topic.endsWith('/status')) {
-            const jobId = topic.split('/')[1];
-            if (visibleJobs[jobId]) {
-              if (data.status === 'bidding' && data.driver) {
-                if (!pendingJobs[jobId]) {
-                  if (!visibleJobs[jobId]) {
-                    logMsg(`⚠️ Received bid for unknown job: ${jobId}`);
-                    return;
-                  }
-                  pendingJobs[jobId] = {
-                    ...visibleJobs[jobId],
-                    bidCount: 0,
-                    bids: {},
-                    timeoutId: setTimeout(() => finalizeBidding(jobId), BIDDING_WINDOW_MS)
-                  };
-                }
-                if (!pendingJobs[jobId].bids[data.driver]) {
-                  pendingJobs[jobId].bidCount += 1;
-                  pendingJobs[jobId].bids[data.driver] = { lat: data.lat, lng: data.lng, timestamp: data.ts };
-                  visibleJobs[jobId].status = `Bidding (${pendingJobs[jobId].bidCount})`;
-                  visibleJobs[jobId].driver = '-';
-                  updateJobsTable();
-                  localStorage.setItem('visibleJobs', JSON.stringify(visibleJobs));
-                  logMsg(`📥 Bid #${pendingJobs[jobId].bidCount} for ${jobId} from ${data.driver}`);
-                } else {
-                  logMsg(`⏭️ Duplicate bid from ${data.driver} for ${jobId} ignored.`);
-                }
-              }
-
-              if (data.status !== 'bidding') {
-                visibleJobs[jobId].status = data.status;
-                visibleJobs[jobId].driver = data.driver || '-';
-                updateJobsTable();
-                localStorage.setItem('visibleJobs', JSON.stringify(visibleJobs));
-              }
-            }
-          }
-
-        } catch(e) { console.warn("MQTT parse error:", e); }
-      });
-    }
-
-    // === JOBS ===
-    function sendOrder() {
-      const name = el.customerName.value.trim();
-      const phone = el.customerPhone.value.trim();
-      if (!name) return alert("Enter customer name");
-      if (!phone) return alert("Enter customer phone");
-
-      const jobId = 'job-' + Date.now().toString(36) + Math.random().toString(36).substr(2, 2); // More unique ID
-      const job = {
-        job: jobId,
-        pubName: PUB_NAME,
-        customerName: name,
-        customerPhone: phone,
-        lat: PUB_COORDS.lat,
-        lng: PUB_COORDS.lng,
-        ts: Date.now(),
-        status: 'queued',
-        driver: '-',
-        originalBidders: {} // Track bidders for re-allocation
-      };
-
-      // Insert at top for latest-on-top
-      visibleJobs = { [jobId]: job, ...visibleJobs };
-      localStorage.setItem('visibleJobs', JSON.stringify(visibleJobs));
-      updateJobsTable();
-
-      if (client && client.connected) {
-        client.publish(`pubs/requests/${PUB_ID}`, JSON.stringify(job));
-        
-        // Send FCM pushes
-        const now = Date.now();
-        Object.entries(drivers).forEach(([id, driver]) => {
-          if (!id || !driver.fcmToken) return;
-          const isAllowed = debugAllowAll || allowedDrivers.includes(id);
-          const isFresh = (now - (driver.lastActive || 0)) < 60_000;
-          const inRange = distanceMeters(driver, PUB_COORDS) <= 10_000;
-          
-          let reason = 'eligible';
-          if (!isAllowed) reason = 'not_allowed';
-          else if (!isFresh) reason = 'gps_old';
-          else if (!inRange) reason = 'out_of_range';
-          
-          if (reason === 'eligible') {
-            sendPushToDriver(id, driver.fcmToken, jobId, reason);
-            job.originalBidders[id] = true; // Track eligible driver
-          }
-        });
-        
-        logMsg('📤 Sent job ' + jobId);
-      } else {
-        const offlineQueue = safeParseJson('offlineQueue', []);
-        offlineQueue.push(job);
-        localStorage.setItem('offlineQueue', JSON.stringify(offlineQueue));
-        logMsg('📦 Stored offline job ' + jobId);
-      }
-    }
-
-    function resendOfflineJobs() {
-      const offlineQueue = safeParseJson('offlineQueue', []);
-      if (offlineQueue.length === 0) return;
-      offlineQueue.forEach(j => {
-        client.publish(`pubs/requests/${PUB_ID}`, JSON.stringify(j));
-        logMsg('☁️ Resent job ' + j.job);
-      });
-      localStorage.setItem('offlineQueue', '[]');
-    }
-
-    function updateJobsTable() {
-      el.jobsTable.innerHTML = '';
-      Object.entries(visibleJobs).forEach(([id, j]) => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${id}</td>
-          <td>${j.customerName || '-'}</td>
-          <td>${j.customerPhone || '-'}</td>
-          <td>${j.driver || '-'}</td>
-          <td>${j.status}</td>
-        `;
-        el.jobsTable.appendChild(tr);
-      });
-    }
-
-    // === FINALIZE BIDDING (60s) ===
-    function finalizeBidding(jobId) {
-      const job = pendingJobs[jobId];
-      if (!job) return;
-
-      let winner = null;
-      const bids = Object.entries(job.bids || {});
-
-      if (bids.length > 0) {
-        const valid = bids.filter(([id]) => {
-          const d = drivers[id];
-          return d && (d.data?.status === 'idle' || d.data?.status === 'available');
-        });
-
-        if (valid.length > 0) {
-          valid.sort(([aId, a], [bId, b]) => {
-            const distA = distanceMeters(a, {lat: job.lat, lng: job.lng});
-            const distB = distanceMeters(b, {lat: job.lat, lng: job.lng});
-            return distA - distB;
-          });
-          winner = valid[0][0];
-        }
-      }
-
-      if (winner) {
-        visibleJobs[jobId].status = 'allocated';
-        visibleJobs[jobId].driver = winner;
-        client.publish(`jobs/${jobId}/result/${winner}`, JSON.stringify({ result: "won" }));
-        bids.forEach(([driverId]) => {
-          if (driverId !== winner) {
-            client.publish(`jobs/${jobId}/result/${driverId}`, JSON.stringify({ result: "lost" }));
-          }
-        });
-        logMsg(`🏆 ${jobId} → ${winner}`);
-      } else {
-        visibleJobs[jobId].status = 'no_bids';
-        visibleJobs[jobId].driver = '-';
-        bids.forEach(([driverId]) => {
-          client.publish(`jobs/${jobId}/result/${driverId}`, JSON.stringify({ result: "no_valid_acceptance" }));
-        });
-        logMsg(`⏰ ${jobId}: no valid bids`);
-      }
-
-      delete pendingJobs[jobId];
-      updateJobsTable();
-      localStorage.setItem('visibleJobs', JSON.stringify(visibleJobs));
-    }
-
-    // Function to re-allocate a job if winning driver goes offline/busy
-    function reAllocateJob(job) {
-      logMsg(`🔄 Re-allocating job ${job.job}...`);
-      job.status = 'queued';
-      job.driver = '-';
-      job.originalBidders = {}; // Reset bidders list
-      updateJobsTable();
-      localStorage.setItem('visibleJobs', JSON.stringify(visibleJobs));
-      // Publish job again to pubs/requests/
-      client.publish(`pubs/requests/${PUB_ID}`, JSON.stringify(job));
-      logMsg(`📤 Re-sent job ${job.job} for bidding.`);
-      // Send FCM pushes again to eligible drivers
-      const now = Date.now();
-      Object.entries(drivers).forEach(([id, driver]) => {
-        if (!id || !driver.fcmToken) return;
-        const isAllowed = debugAllowAll || allowedDrivers.includes(id);
-        const isFresh = (now - (driver.lastActive || 0)) < 60_000;
-        const inRange = distanceMeters(driver, PUB_COORDS) <= 10_000;
-        const isActive = driver.data?.status === 'available' || driver.data?.status === 'idle';
-        
-        let reason = 'eligible';
-        if (!isAllowed) reason = 'not_allowed';
-        else if (!isFresh) reason = 'gps_old';
-        else if (!inRange) reason = 'out_of_range';
-        else if (!isActive) reason = 'not_idle_or_available';
-        
-        if (reason === 'eligible') {
-            sendPushToDriver(id, driver.fcmToken, job.job, 'reallocated_job');
-            job.originalBidders[id] = true; // Track new eligible driver
-        }
-      });
-    }
-
-    // === SIMULATION ===
-    function toggleSimDrivers(){
-      simActive = !simActive;
-      el.simulateBtn.innerText = simActive ? 'Stop Sim Drivers' : 'Toggle Sim Drivers';
-      if (simActive) simLoop();
-    }
-    function simLoop(){
-      if (!simActive) return;
-      for (let i = 1; i <= 3; i++) {
-        const id = `driver-${i}`;
-        const lat = PUB_COORDS.lat + (Math.random() - 0.5) * 0.004;
-        const lng = PUB_COORDS.lng + (Math.random() - 0.5) * 0.004;
-        if (client && client.connected) {
-          client.publish(`drivers/${id}/location`, JSON.stringify({ lat, lng, status: 'idle' }));
-          client.publish(`drivers/${id}/status`, JSON.stringify({ driver: id, status: 'idle', ts: Date.now() }));
-          if (!drivers[id]) {
-            drivers[id] = {
-              lat, lng,
-               data: { status: 'idle' }, // ✅ FIXED: Correctly assigns object to 'data' property
-              fcmToken: `simulated-token-${id}`,
-              lastActive: Date.now()
-            };
-            const color = getColorForDriver(id);
-            drivers[id].marker = L.circleMarker([lat, lng], { color, radius: 8 }).addTo(map);
-            drivers[id].marker.bindPopup(id);
-          }
-        }
-        updateDriver(id, lat, lng, { status: 'idle' });
-      }
-      setTimeout(simLoop, 3000);
-    }
-
-    // === ADMIN ===
-    function refreshAllowedDriversList(){
-      el.allowedDriversList.innerHTML = allowedDrivers.map(d => `<li>${d}</li>`).join('');
-      localStorage.setItem('allowedDrivers', JSON.stringify(allowedDrivers));
-    }
-    el.adminBtn.onclick = () => el.adminPanel.style.display = 'block';
-    el.closeAdmin.onclick = () => el.adminPanel.style.display = 'none';
-    el.addDriverBtn.onclick = () => {
-      const d = el.adminDriverId.value.trim();
-      if (d && !allowedDrivers.includes(d)) {
-        allowedDrivers.push(d);
-        refreshAllowedDriversList();
-      }
-    };
-    el.removeDriverBtn.onclick = () => {
-      const d = el.adminDriverId.value.trim();
-      allowedDrivers = allowedDrivers.filter(x => x !== d);
-      refreshAllowedDriversList();
-    };
-    el.allowAllBtn.onclick = () => {
-      debugAllowAll = !debugAllowAll;
-      el.allowAllBtn.innerText = debugAllowAll ? 'Debug: Disallow All' : 'Debug: Allow All';
-      logMsg('Debug allow all = ' + debugAllowAll);
-    };
-
-    // === INITIALIZATION ===
-    el.orderBtn.onclick = sendOrder;
-    el.simulateBtn.onclick = toggleSimDrivers;
-    connectMQTT();
-    updateJobsTable();
-    refreshAllowedDriversList();
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('service-worker.js');
-    }
-    el.logOutput.textContent = localStorage.getItem('activityLog') || '';
-  </script>
+// init
+connectMQTT();
+simulateDrivers();
+el.orderBtn.onclick=sendOrder;
+</script>
 </body>
 </html>
