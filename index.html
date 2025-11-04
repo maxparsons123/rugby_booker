@@ -400,25 +400,25 @@
     }
 
     // === DRIVER MANAGEMENT ===
-    function updateDriver(id, lat, lng, meta = {}) {
-      if (!id) return;
-      if (!drivers[id]?.marker) {
-        const color = getColorForDriver(id);
-        drivers[id] = {
-          lat, lng,
-           { status: 'idle', ...meta },
-          marker: L.circleMarker([lat, lng], { color, radius: 8 }).addTo(map)
-        };
-        drivers[id].marker.bindPopup(id);
-      } else {
-        drivers[id].marker.setLatLng([lat, lng]);
-        drivers[id].data = { ...drivers[id].data, ...meta };
-        drivers[id].lat = lat;
-        drivers[id].lng = lng;
-      }
-      drivers[id].lastActive = Date.now();
-      refreshDriverList();
-    }
+function updateDriver(id, lat, lng, meta = {}) {
+  if (!id) return;
+  if (!drivers[id]?.marker) {
+    const color = getColorForDriver(id);
+    drivers[id] = {
+      lat, lng,
+       data: { status: 'idle', ...meta }, // ✅ CORRECT: 'data' is the property name, value is the object
+      marker: L.circleMarker([lat, lng], { color, radius: 8 }).addTo(map)
+    };
+    drivers[id].marker.bindPopup(id);
+  } else {
+    drivers[id].marker.setLatLng([lat, lng]);
+    drivers[id].data = { ...drivers[id].data, ...meta };
+    drivers[id].lat = lat;
+    drivers[id].lng = lng;
+  }
+  drivers[id].lastActive = Date.now();
+  refreshDriverList();
+}
 
     function refreshDriverList() {
       el.driverList.innerHTML = '';
@@ -809,3 +809,4 @@
   </script>
 </body>
 </html>
+
