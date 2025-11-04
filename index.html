@@ -499,7 +499,7 @@ function updateDriver(id, lat, lng, meta = {}) {
 
             // Update local driver status
             if (!drivers[driverId]) {
-              drivers[driverId] = {  {} };
+             drivers[driverId] = {  { label: 'Taxi', status: 'idle' } }; // ✅ CORRECT
             }
             drivers[driverId].data.status = data.status;
             drivers[driverId].lastActive = data.ts || Date.now();
@@ -770,4 +770,5 @@ function updateDriver(id, lat, lng, meta = {}) {
   </script>
 </body>
 </html>
+
 
