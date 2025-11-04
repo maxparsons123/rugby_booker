@@ -438,7 +438,7 @@ function updateDriver(id, lat, lng, meta = {}) {
                 drivers[driverId] = {
                   lat: PUB_COORDS.lat,
                   lng: PUB_COORDS.lng,
-                   { label: 'Taxi', status: 'idle' }, // ✅ CORRECTED: Assign to 'data' property
+                data: { label: 'Taxi', status: 'idle' }, // ✅ CORRECTED: Assign to 'data' property
                   fcmToken: fcmToken,
                   lastActive: Date.now()
                 };
@@ -770,3 +770,4 @@ function updateDriver(id, lat, lng, meta = {}) {
   </script>
 </body>
 </html>
+
