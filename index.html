@@ -394,136 +394,135 @@
 
     // === MQTT ===
     let client = null;
-    function connectMQTT(){
-      const statusEl = document.createElement('div');
-      statusEl.className = 'status';
-      statusEl.id = 'connectionStatus';
-      statusEl.textContent = 'MQTT: connecting...';
-      document.querySelector('.booking-panel').insertAdjacentElement('afterbegin', statusEl);
-      
-      client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', { connectTimeout: 4000, reconnectPeriod: 1000 });
-      client.on('connect', () => {
-        statusEl.textContent = 'MQTT: connected';
-        logMsg('✅ Connected to MQTT');
-        client.subscribe(`drivers/+/location`);
-        client.subscribe(`drivers/+/status`); // ✅ SUBSCRIBE TO DRIVER STATUS CHANGES
-        client.subscribe(`jobs/+/status`);
-        client.subscribe('drivers/tokens');
-        client.subscribe(`pubs/requests/${PUB_ID}`); // Explicit topic for this pub
-        resendOfflineJobs();
+function connectMQTT() {
+      state.client = mqtt.connect("wss://broker.hivemq.com:8884/mqtt", { reconnectPeriod: 1000 });
+      state.client.on('connect', () => {
+        console.log("✅ MQTT Connected as:", state.DRIVER_ID); // ✅ LOG: Connection
+        state.els.status.textContent = `✅ Connected as ${state.DRIVER_ID}`;
+        state.client.subscribe("pubs/requests/+");
+        state.client.subscribe(`jobs/+/result/${state.DRIVER_ID}`);
+        state.client.subscribe(`drivers/${state.DRIVER_ID}/presets`);
+        state.client.subscribe("drivers/+/location");
+        state.client.subscribe("drivers/+/status");
+        state.client.subscribe("chat/group");
+        state.client.subscribe(`chat/private/${state.DRIVER_ID}/+`);
+        // ✅ LOG: Publish initial status
+        const statusPayload = { driver: state.DRIVER_ID, status: state.driverPresence, ts: Date.now() };
+        state.client.publish(`drivers/${state.DRIVER_ID}/status`, JSON.stringify(statusPayload));
+        console.log("📤 Published initial driver status:", statusPayload);
+        if (state.fcmToken) publishFcmToken();
+        if (state.driverCoords) publishLocationThrottled(state.driverCoords);
       });
 
-      client.on('message', (topic, msg) => {
+      state.client.on('message', (topic, msg) => {
         try {
           const data = JSON.parse(msg.toString());
-          logMsg(`📡 ${topic} -> ${JSON.stringify(data)}`); // ✅ LOG ALL MESSAGES
+          
+          // ✅ LOG: All MQTT messages
+          console.log("📡 MQTT received:", topic, data);
 
-          if (topic.endsWith('/location')) {
-            const id = topic.split('/')[1];
-            updateDriver(id, data.lat, data.lng, data);
+          // PASSENGER PRESETS
+          if (topic === `drivers/${state.DRIVER_ID}/presets`) {
+            handlePassengerPreset(data); // ✅ Fixed: Ensure no trailing comma before this
+            return;
           }
 
-          // FCM TOKEN HANDLING
-          if (topic === 'drivers/tokens') {
-            const { driverId, fcmToken } = data;
-            if (driverId && fcmToken) {
-              if (!drivers[driverId]) {
-                drivers[driverId] = {
-                  lat: PUB_COORDS.lat,
-                  lng: PUB_COORDS.lng,
-                   { label: 'Taxi', status: 'idle' },
-                  fcmToken: fcmToken,
-                  lastActive: Date.now()
-                };
-                const color = getColorForDriver(driverId);
-                drivers[driverId].marker = L.circleMarker([PUB_COORDS.lat, PUB_COORDS.lng], { color, radius: 8 }).addTo(map);
-                drivers[driverId].marker.bindPopup(driverId);
-              } else {
-                drivers[driverId].fcmToken = fcmToken;
-                drivers[driverId].lastActive = Date.now();
-              }
-              logMsg(`✅ FCM token received for ${driverId}`);
+          // ✅ FIXED: NEW JOBS - Check seenJobIds BEFORE calling showJobPanel
+          if (topic.startsWith("pubs/requests/")) {
+            // ✅ CRITICAL FIX: Check against the CORRECT state.seenJobIds Set
+            if (state.seenJobIds.has(data.job)) {
+              console.log("⏭️ Skipping duplicate job (MQTT):", data.job);
+              return; // Exit early if duplicate
+            }
+            // Mark as seen IMMEDIATELY after checking
+            state.seenJobIds.add(data.job);
+            console.log("🆕 New unique job received and marked as seen:", data.job);
+
+            state.pendingJobs.push({ ...data, receivedAt: Date.now() });
+            saveToStorage(`pending_jobs_${state.DRIVER_ID}`, state.pendingJobs);
+            addJobToHistory(data, 'queued');
+            if (state.driverPresence === 'available' && !state.isJobActive) {
+              showJobPanel(data); // ✅ This should now work reliably
+            } else if (state.driverPresence === 'busy') {
+              speakFeedback("New job queued. You are set to busy.");
+              const btn = document.getElementById('menuBtn');
+              btn.style.transform = 'scale(1.1)';
+              btn.style.backgroundColor = '#ff6b35';
+              setTimeout(() => {
+                btn.style.transform = '';
+                btn.style.backgroundColor = '#FFD700';
+              }, 600);
             }
           }
 
-          // ✅ NEW: DRIVER STATUS CHANGES
+          // JOB RESULTS
+          if (topic.startsWith("jobs/") && topic.endsWith(`/result/${state.DRIVER_ID}`)) {
+            const jobId = topic.split('/')[1];
+            if (data.result === "won") {
+              updateJobStatus(jobId, 'allocated');
+              state.els.jobWonModal.style.display = 'flex';
+              speakFeedback("You won the job!"); // ✅ Should now be okay
+              setTimeout(() => { state.els.jobWonModal.style.display = 'none'; }, 3000);
+              if (!state.isMenuOpen) state.els.menuBtn.click();
+              else renderView('currentJob');
+            }
+          }
+
+          // CHAT
+          if (topic === "chat/group") {
+            if (data.sender !== state.DRIVER_ID) {
+              addMessage('group', data.sender, data.text, data.timestamp);
+            }
+          }
+          if (topic.startsWith(`chat/private/${state.DRIVER_ID}/`)) {
+            const sender = topic.split('/')[2];
+            if (sender !== state.DRIVER_ID) {
+              addMessage(sender, data.sender, data.text, data.timestamp);
+            }
+          }
+
+          // DRIVER LOCATIONS & STATUS
+          if (topic.startsWith("drivers/") && topic.endsWith("/location")) {
+            const driverId = topic.split('/')[1];
+            if (driverId === state.DRIVER_ID) return;
+            // ✅ CRITICAL FIX: Ensure correct object assignment syntax
+            if (!state.otherDrivers[driverId]) {
+              state.otherDrivers[driverId] = {
+                lat: data.lat,
+                lng: data.lng,
+                data: { status: data.status || 'idle' }, // Use status from message or default
+                marker: L.marker([data.lat, data.lng]).addTo(map) // Add marker if new
+              };
+            } else {
+              state.otherDrivers[driverId].lat = data.lat;
+              state.otherDrivers[driverId].lng = data.lng;
+              state.otherDrivers[driverId].data.status = data.status || 'idle';
+              state.otherDrivers[driverId].marker.setLatLng([data.lat, data.lng]);
+            }
+            state.driverStatus[driverId] = data.ts;
+            updateChatList();
+          }
           if (topic.startsWith("drivers/") && topic.endsWith("/status")) {
             const driverId = topic.split('/')[1];
-            if (driverId === 'tokens') return; // Ignore the 'drivers/tokens' topic itself
-            if (data.driver !== driverId) return; // Ensure data matches topic
-
-            // Update local driver status
-            if (!drivers[driverId]) {
-              drivers[driverId] = { lat: PUB_COORDS.lat, lng: PUB_COORDS.lng, data: {}, fcmToken: null, lastActive: Date.now() };
+            if (driverId === state.DRIVER_ID) return;
+            // ✅ CRITICAL FIX: Ensure correct object assignment syntax
+            if (!state.otherDrivers[driverId]) {
+              state.otherDrivers[driverId] = {
+                lat: PUB_COORDS.lat, // Default to pub coords if no location seen yet
+                lng: PUB_COORDS.lng,
+                data: { status: data.status },
+                marker: null // Marker will be added on location update
+              };
             }
-            drivers[driverId].data.status = data.status;
-            drivers[driverId].lastActive = data.ts || Date.now();
-            refreshDriverList();
-            logMsg(`📊 Driver ${driverId} status updated to: ${data.status}`);
-
-            // ✅ CRITICAL: CHECK IF THIS DRIVER HAD AN ASSIGNED JOB
-            const assignedJobId = Object.keys(visibleJobs).find(jobId => {
-              const job = visibleJobs[jobId];
-              return job.driver === driverId && job.status === 'allocated';
-            });
-
-            if (assignedJobId) {
-              const job = visibleJobs[assignedJobId];
-              if (data.status === 'busy' || data.status === 'offline') {
-                logMsg(`⚠️ Driver ${driverId} (allocated to job ${assignedJobId}) went ${data.status}. Re-allocating job.`);
-                
-                // Publish "driver unavailable" result to all bidders for this job
-                const allBidders = job.bidderList || []; // Assuming you store bidders when allocating
-                allBidders.forEach(bidderId => {
-                  client.publish(`jobs/${assignedJobId}/result/${bidderId}`, JSON.stringify({ result: "driver_unavailable" }));
-                });
-                
-                // Remove driver from job record
-                job.driver = '-';
-                job.status = 're-allocating';
-                updateJobsTable();
-                localStorage.setItem('visibleJobs', JSON.stringify(visibleJobs));
-                
-                // Start re-allocation process (e.g., re-send to eligible drivers, or use your bidding logic again)
-                // For simplicity, just send it again to available drivers
-                reAllocateJob(job);
-              }
-            }
+            state.otherDrivers[driverId].data.status = data.status;
+            state.driverStatus[driverId] = data.ts;
+            console.log(`📊 Driver ${driverId} status updated:`, data.status); // ✅ LOG: Driver status
+            updateChatList();
           }
 
-          // JOB STATUS UPDATES (BIDDING, COMPLETION, ETC.)
-          if (topic.startsWith('jobs/') && topic.endsWith('/status')) {
-            const jobId = topic.split('/')[1];
-            if (visibleJobs[jobId]) {
-              if (data.status === 'bidding' && data.driver) {
-                if (!pendingJobs[jobId]) {
-                  pendingJobs[jobId] = {
-                    ...visibleJobs[jobId],
-                    bidCount: 0,
-                    bids: {},
-                    timeoutId: setTimeout(() => finalizeBidding(jobId), BIDDING_WINDOW_MS)
-                  };
-                }
-                if (!pendingJobs[jobId].bids[data.driver]) {
-                  pendingJobs[jobId].bidCount += 1;
-                  pendingJobs[jobId].bids[data.driver] = { lat: data.lat, lng: data.lng, timestamp: data.ts };
-                  visibleJobs[jobId].status = `Bidding (${pendingJobs[jobId].bidCount})`;
-                  visibleJobs[jobId].driver = '-';
-                  updateJobsTable();
-                  localStorage.setItem('visibleJobs', JSON.stringify(visibleJobs));
-                  logMsg(`📥 Bid #${pendingJobs[jobId].bidCount} for ${jobId} from ${data.driver}`);
-                }
-              }
-
-              if (data.status !== 'bidding') {
-                visibleJobs[jobId].status = data.status;
-                visibleJobs[jobId].driver = data.driver || '-';
-                updateJobsTable();
-                localStorage.setItem('visibleJobs', JSON.stringify(visibleJobs));
-              }
-            }
-          }
-        } catch(e) { console.warn("MQTT parse error:", e); }
+        } catch (e) {
+          console.error("MQTT error:", e);
+        }
       });
     }
 
@@ -759,3 +758,4 @@
   </script>
 </body>
 </html>
+
