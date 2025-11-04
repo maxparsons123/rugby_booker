@@ -195,7 +195,7 @@
 
     <footer>
       <div>Black Cab Unite — Coventry Rugby Club</div>
-              <div>Topics: pubs/requests/{pub_id} • drivers/tokens • jobs/+/status</div>
+      <div>Topics: pubs/requests/{pub_id} • drivers/tokens • jobs/+/status</div>
     </footer>
 
         <div class="admin-panel" id="adminPanel">
@@ -287,9 +287,6 @@
 
     // === DOM ELEMENTS ===
     const el = {
-      // NOTE: The connectionStatus element was not in the original HTML body. I've commented it out,
-      // or you can add `<div id="connectionStatus" style="font-size:12px; color:red;"></div>` somewhere in the header.
-      // connectionStatus: document.getElementById('connectionStatus'),
       driverList: document.getElementById('driverList'),
       customerName: document.getElementById('customerName'),
       customerPhone: document.getElementById('customerPhone'),
@@ -329,12 +326,9 @@
         visibleJobs = {};
         drivers = {};
         Object.values(pendingJobs).forEach(job => clearTimeout(job.timeoutId));
-        // NOTE: The next line needs to be updated to delete properties from the object, not assign a new empty object.
-        // pendingJobs = {}; // This is not the correct way to empty a constant object.
         for (const key in pendingJobs) { delete pendingJobs[key]; }
         map.eachLayer(layer => {
           if (layer instanceof L.CircleMarker) map.removeLayer(layer);
-          // NOTE: If you have custom markers for the jobs, they should be cleared too.
         });
         updateJobsTable();
         el.driverList.innerHTML = '';
@@ -369,7 +363,7 @@
     // === DRIVER MANAGEMENT (Modified to include activeJobId) ===
     function updateDriver(id, lat, lng, meta = {}) {
       if (!id) return;
-      if (!drivers[id] || !drivers[id].marker) { // Added check for marker presence
+      if (!drivers[id] || !drivers[id].marker) { 
         const color = getColorForDriver(id);
         // Preserve existing data if available
         const existingData = drivers[id] || {};
@@ -397,11 +391,13 @@
       el.driverList.innerHTML = '';
       Object.entries(drivers).forEach(([id, d]) => {
         const dist = distanceMeters(d, PUB_COORDS);
+        // Backward compatible check for data?.status
+        const statusText = (d.data && d.data.status) || 'unknown'; 
         const activeJobInfo = d.activeJobId ? ` (Job: ${d.activeJobId.substring(d.activeJobId.length - 4)})` : '';
         const div = document.createElement('div');
         div.className = 'driver-item';
         div.innerHTML = `
-          <div><b>${id}</b><div class="small">${d.data?.status || 'unknown'}${activeJobInfo}</div></div>
+          <div><b>${id}</b><div class="small">${statusText}${activeJobInfo}</div></div>
           <div>${dist < 1000 ? dist.toFixed(0) + 'm' : (dist / 1000).toFixed(1) + 'km'}</div>
         `;
         el.driverList.appendChild(div);
@@ -435,7 +431,6 @@
             delete pendingJobs[jobId];
           }
           // Re-start the whole bidding process
-          // NOTE: This function needs job details, which we can extract from visibleJobs.
           reAllocateJob(job);
         }
       });
@@ -448,7 +443,6 @@
       client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', { connectTimeout: 4000, reconnectPeriod: 1000 });
 
       client.on('connect', () => {
-        // if (el.connectionStatus) el.connectionStatus.textContent = 'MQTT: connected';
         logMsg('✅ Connected to MQTT');
         client.subscribe(`drivers/+/location`);
         client.subscribe(`drivers/+/status`);
@@ -462,11 +456,9 @@
         // if (el.connectionStatus) el.connectionStatus.textContent = 'MQTT: reconnecting...';
       });
       client.on('error', (err) => {
-        // if (el.connectionStatus) el.connectionStatus.textContent = `MQTT: Error (${err.message})`;
         logMsg(`❌ MQTT Error: ${err.message}`);
       });
       client.on('close', () => {
-        // if (el.connectionStatus) el.connectionStatus.textContent = 'MQTT: disconnected';
         logMsg('🔴 MQTT Disconnected');
       });
 
@@ -507,7 +499,7 @@
             }
             drivers[driverId].data.status = data.status;
             drivers[driverId].lastActive = data.ts || Date.now();
-           
+            
             // Update active job status based on driver report
             if (data.status === 'allocated' || data.status === 'on_route' || data.status === 'arrived') {
               drivers[driverId].activeJobId = data.jobId;
@@ -546,7 +538,8 @@
                 const driverId = data.driver;
 
                 // **SECURITY FIX 1: Reject bid if driver is already bidding/active on another job**
-                if (drivers[driverId]?.activeJobId && drivers[driverId].activeJobId !== jobId) {
+                // FIX: Using reliable existence check instead of optional chaining
+                if (drivers[driverId] && drivers[driverId].activeJobId && drivers[driverId].activeJobId !== jobId) {
                   logMsg(`❌ Driver ${driverId} rejected bid for ${jobId}: already active on ${drivers[driverId].activeJobId}`);
                   client.publish(`jobs/${jobId}/result/${driverId}`, JSON.stringify({ result: "rejected_multi_bid" }));
                   return;
@@ -617,8 +610,6 @@
       logMsg(`📤 Re-sent job ${jobId} for bidding.`);
 
       // Trigger FCM pushes to eligible drivers
-      // const now = Date.now(); // Not used here, removed
-
       Object.entries(drivers).forEach(([id, driver]) => {
         if (!id || !driver.fcmToken) return;
 
@@ -629,7 +620,9 @@
         }
 
         const isAllowed = debugAllowAll || allowedDrivers.includes(id);
-        const isActive = driver.data?.status === 'available' || driver.data?.status === 'idle';
+        // FIX: Using reliable existence check instead of optional chaining
+        const status = (driver.data && driver.data.status);
+        const isActive = status === 'available' || status === 'idle';
         const inRange = distanceMeters(driver, PUB_COORDS) <= 10_000;
        
         let reason = 'eligible';
@@ -691,7 +684,9 @@
          
           // Eligibility checks
           const isAllowed = debugAllowAll || allowedDrivers.includes(id);
-          const isActive = driver.data?.status === 'available' || driver.data?.status === 'idle';
+          // FIX: Using reliable existence check instead of optional chaining
+          const status = (driver.data && driver.data.status);
+          const isActive = status === 'available' || status === 'idle';
           const inRange = distanceMeters(driver, PUB_COORDS) <= 10_000;
           
           let reason = 'eligible';
@@ -735,16 +730,18 @@
         const valid = bids.filter(([id]) => {
           const d = drivers[id];
           // Must exist, must be 'idle' or 'available', AND must not have won/accepted another job in the meantime
-          const isAvailable = d && (d.data?.status === 'idle' || d.data?.status === 'available');
-          const isLockedToThisJob = d?.activeJobId === jobId;
+          // FIX: Using reliable existence check instead of optional chaining
+          const status = (d && d.data) ? d.data.status : null;
+          const isAvailable = d && (status === 'idle' || status === 'available');
+          const isLockedToThisJob = d && d.activeJobId === jobId;
 
           if (!isAvailable) {
-            logMsg(`🚨 Bid from ${id} ignored: status is ${d?.data?.status || 'unknown'}.`);
+            logMsg(`🚨 Bid from ${id} ignored: status is ${status || 'unknown'}.`);
             return false;
           }
           if (!isLockedToThisJob) {
-            // This shouldn't happen if Security Fix 2 worked, but is a final failsafe
-            logMsg(`🚨 Bid from ${id} ignored: driver lock broken, active job: ${d?.activeJobId}`);
+            // FIX: Using reliable existence check instead of optional chaining
+            logMsg(`🚨 Bid from ${id} ignored: driver lock broken, active job: ${d ? d.activeJobId : 'null'}`);
             return false;
           }
           return true;
@@ -785,7 +782,7 @@
 
         bids.forEach(([driverId]) => {
           client.publish(`jobs/${jobId}/result/${driverId}`, JSON.stringify({ result: "no_valid_acceptance" }));
-          drivers[driverId].activeJobId = null; // Unlock drivers who bid but failed to win
+          if(drivers[driverId]) drivers[driverId].activeJobId = null; // Unlock drivers who bid but failed to win
         });
         logMsg(`⏰ ${jobId}: no valid bids`);
       }
@@ -873,6 +870,7 @@
           } else {
             simDrivers[id] = drivers[id];
           }
+          // FIX: Ensure status is initialized for the map marker
           updateDriver(id, simDrivers[id].lat, simDrivers[id].lng, { status: simDrivers[id].status });
         });
         simInterval = setInterval(simLoop, 5000); // Update every 5 seconds
@@ -890,14 +888,15 @@
       }
     }
 
-function simLoop() {
+    function simLoop() {
       Object.entries(simDrivers).forEach(([id, d]) => {
         // Simple random drift
         const newLat = d.lat + (Math.random() - 0.5) * 0.0001;
         const newLng = d.lng + (Math.random() - 0.5) * 0.0001;
 
         // Simulate driver activity
-        if (drivers[id]?.activeJobId) {
+        // FIX: Using reliable existence check instead of optional chaining
+        if (drivers[id] && drivers[id].activeJobId) {
           // If driver is allocated to a job, simulate status updates
           const job = visibleJobs[drivers[id].activeJobId];
           if (job && job.status === 'allocated') {
@@ -924,9 +923,9 @@ function simLoop() {
           }
         }
 
-        // Update location (FIX APPLIED HERE)
+        // Update location (FIX APPLIED)
         updateDriver(id, newLat, newLng, { 
-          status: (drivers[id] && drivers[id].data) ? drivers[id].data.status : 'idle'
+          status: (drivers[id] && drivers[id].data) ? drivers[id].data.status : 'idle' 
         });
         d.lat = newLat;
         d.lng = newLng;
@@ -953,4 +952,3 @@ function simLoop() {
   </script>
 </body>
 </html>
-
