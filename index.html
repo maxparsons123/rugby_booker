@@ -718,7 +718,7 @@ function updateDriver(id, lat, lng, meta = {}) {
           if (!drivers[id]) {
             drivers[id] = {
               lat, lng,
-               { status: 'idle' },
+             data:  { status: 'idle' },
               fcmToken: `simulated-token-${id}`,
               lastActive: Date.now()
             };
@@ -770,6 +770,7 @@ function updateDriver(id, lat, lng, meta = {}) {
   </script>
 </body>
 </html>
+
 
 
 
