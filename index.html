@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta name="theme-color" content="#1f6feb" />
   <link rel="manifest" href="manifest.json" />
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <style>
     :root{--accent:#1f6feb;--accent-2:#ff7b00;--bg:#f7fafc;--card:#ffffff;}
     html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial;background:var(--bg);color:#111;}
@@ -219,8 +219,8 @@
 
   </div>
 
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <script>
     // === CONFIG ===
     const PUB_ID = 'coventry-rugby-butts-park';
@@ -229,7 +229,6 @@
     const BIDDING_WINDOW_MS = 60_000; // 60 seconds
 
     // ===== FCM PUSH VIA CLOUD FUNCTION (HTTP) =====
-    // FIX 4: Removed trailing space from the URL
     const CLOUD_FUNCTION_URL = 'https://europe-west2-cabunite.cloudfunctions.net/sendJobAlertHttp';
 
     async function sendPushToDriver(driverId, fcmToken, jobId, reason) {
@@ -391,7 +390,7 @@
       el.driverList.innerHTML = '';
       Object.entries(drivers).forEach(([id, d]) => {
         const dist = distanceMeters(d, PUB_COORDS);
-        // Backward compatible check for data?.status
+        // Backward compatible check for data.status
         const statusText = (d.data && d.data.status) || 'unknown'; 
         const activeJobInfo = d.activeJobId ? ` (Job: ${d.activeJobId.substring(d.activeJobId.length - 4)})` : '';
         const div = document.createElement('div');
@@ -537,9 +536,22 @@
               if (data.status === 'bidding' && data.driver) {
                 const driverId = data.driver;
 
+                // ⭐ CRITICAL FIX: Ensure the driver object exists before accessing its properties.
+                if (!drivers[driverId]) {
+                  logMsg(`💡 Initializing state for new driver: ${driverId}`);
+                  drivers[driverId] = { 
+                    lat: data.lat || PUB_COORDS.lat, 
+                    lng: data.lng || PUB_COORDS.lng, 
+                    data: { status: 'idle' }, 
+                    fcmToken: null, 
+                    lastActive: Date.now(), 
+                    activeJobId: null 
+                  };
+                }
+
                 // **SECURITY FIX 1: Reject bid if driver is already bidding/active on another job**
-                // FIX: Using reliable existence check instead of optional chaining
-                if (drivers[driverId] && drivers[driverId].activeJobId && drivers[driverId].activeJobId !== jobId) {
+                // This check is now safe because drivers[driverId] is guaranteed to exist.
+                if (drivers[driverId].activeJobId && drivers[driverId].activeJobId !== jobId) {
                   logMsg(`❌ Driver ${driverId} rejected bid for ${jobId}: already active on ${drivers[driverId].activeJobId}`);
                   client.publish(`jobs/${jobId}/result/${driverId}`, JSON.stringify({ result: "rejected_multi_bid" }));
                   return;
@@ -620,7 +632,7 @@
         }
 
         const isAllowed = debugAllowAll || allowedDrivers.includes(id);
-        // FIX: Using reliable existence check instead of optional chaining
+        // Using reliable existence check instead of optional chaining
         const status = (driver.data && driver.data.status);
         const isActive = status === 'available' || status === 'idle';
         const inRange = distanceMeters(driver, PUB_COORDS) <= 10_000;
@@ -684,7 +696,7 @@
          
           // Eligibility checks
           const isAllowed = debugAllowAll || allowedDrivers.includes(id);
-          // FIX: Using reliable existence check instead of optional chaining
+          // Using reliable existence check instead of optional chaining
           const status = (driver.data && driver.data.status);
           const isActive = status === 'available' || status === 'idle';
           const inRange = distanceMeters(driver, PUB_COORDS) <= 10_000;
@@ -730,7 +742,7 @@
         const valid = bids.filter(([id]) => {
           const d = drivers[id];
           // Must exist, must be 'idle' or 'available', AND must not have won/accepted another job in the meantime
-          // FIX: Using reliable existence check instead of optional chaining
+          // Using reliable existence check instead of optional chaining
           const status = (d && d.data) ? d.data.status : null;
           const isAvailable = d && (status === 'idle' || status === 'available');
           const isLockedToThisJob = d && d.activeJobId === jobId;
@@ -740,7 +752,6 @@
             return false;
           }
           if (!isLockedToThisJob) {
-            // FIX: Using reliable existence check instead of optional chaining
             logMsg(`🚨 Bid from ${id} ignored: driver lock broken, active job: ${d ? d.activeJobId : 'null'}`);
             return false;
           }
@@ -870,7 +881,7 @@
           } else {
             simDrivers[id] = drivers[id];
           }
-          // FIX: Ensure status is initialized for the map marker
+          // Ensure status is initialized for the map marker
           updateDriver(id, simDrivers[id].lat, simDrivers[id].lng, { status: simDrivers[id].status });
         });
         simInterval = setInterval(simLoop, 5000); // Update every 5 seconds
@@ -895,7 +906,7 @@
         const newLng = d.lng + (Math.random() - 0.5) * 0.0001;
 
         // Simulate driver activity
-        // FIX: Using reliable existence check instead of optional chaining
+        // Using reliable existence check instead of optional chaining
         if (drivers[id] && drivers[id].activeJobId) {
           // If driver is allocated to a job, simulate status updates
           const job = visibleJobs[drivers[id].activeJobId];
