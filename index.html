@@ -2,10 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Black Cab Unite — Tablet v2.0</title>
+  <title>Black Cab Unite — Tablet v8.9</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta name="theme-color" content="#1f6feb" />
-  <link rel="manifest" href="manifest.json" />
+  <link rel="manifest" href="manifest.json" /> 
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <style>
     :root{--accent:#1f6feb;--accent-2:#ff7b00;--bg:#f7fafc;--card:#ffffff;}
@@ -17,7 +17,7 @@
     .small{font-size:13px;color:#666;}
     .tablet-info{text-align:right;font-size:13px;color:#444;}
     .main{display:flex;gap:12px;flex:1;min-height:0;}
-    #map{flex:1;border-radius:12px;box-shadow:0 6px 16px rgba(0,0,0,0.08);}
+    #map{flex:1;border-radius:12px;box-shadow:0 6px 16px rgba(0,0,0,0.08);z-index:1000;position:relative;} /* Z-index to ensure map is behind log panel */
     .panel{
       width:360px;
       min-width:260px;
@@ -27,6 +27,7 @@
       display:flex;
       flex-direction:column;
       overflow:hidden;
+      z-index: 1002; /* Ensure panel is above map */
     }
     /* Static Booking Panel */
     .booking-panel{
@@ -109,12 +110,13 @@
       padding:12px;
       border-radius:12px;
       box-shadow:0 6px 16px rgba(0,0,0,0.1);
-      z-index:1000;
+      z-index:1003;
       display:none;
       width:300px;
     }
     .admin-panel h3{margin:0 0 10px 0;font-size:16px;}
     .admin-panel .close-btn{float:right;cursor:pointer;color:#555;}
+    /* --- LOG PANEL (FIXED TO FLOAT ON TOP) --- */
     #logPanel{
       position:fixed;
       bottom:0;
@@ -127,7 +129,7 @@
       overflow:hidden;
       transition:max-height 0.4s ease;
       padding:0 12px;
-      z-index: 2000;
+      z-index: 2000; /* High z-index to float above everything */
     }
     #logPanel.open{max-height:40vh;padding:12px;}
     #logOutput{
@@ -140,13 +142,14 @@
       height:100%;
       overflow:auto;
     }
+    /* --- END LOG PANEL FIX --- */
     /* Job Won Modal */
     #jobWonModal {
       display: none;
       position: fixed;
       top: 0; left: 0; right: 0; bottom: 0;
       background: rgba(0,0,0,0.7);
-      z-index: 2000;
+      z-index: 2001; /* Higher than log panel */
       justify-content: center;
       align-items: center;
     }
@@ -346,13 +349,14 @@
       jobWonMessage: document.getElementById('jobWonMessage')
     };
 
-    // === LOGGING ===
+    // === LOGGING (Enhanced) ===
     function logMsg(msg){
       const ts = new Date().toLocaleTimeString();
       const entry = `[${ts}] ${msg}\n`;
       const logs = (localStorage.getItem('activityLog') || '') + entry;
       localStorage.setItem('activityLog', logs);
       el.logOutput.textContent = logs;
+      // Auto-scroll if panel is open
       if (el.logOutput.parentElement.classList.contains('open')) {
         el.logOutput.scrollTop = el.logOutput.scrollHeight;
       }
@@ -406,7 +410,7 @@ function updateDriver(id, lat, lng, meta = {}) {
     const color = getColorForDriver(id);
     drivers[id] = {
       lat, lng,
-       data: { status: 'idle', ...meta }, // ✅ CORRECT: 'data' is the property name, value is the object
+       data: { status: 'idle', ...meta }, // ✅ CORRECT: 'data' is the property name
       marker: L.circleMarker([lat, lng], { color, radius: 8 }).addTo(map)
     };
     drivers[id].marker.bindPopup(id);
@@ -458,7 +462,19 @@ function updateDriver(id, lat, lng, meta = {}) {
       client.on('message', (topic, msg) => {
         try {
           const data = JSON.parse(msg.toString());
-          logMsg(`📡 ${topic} -> ${JSON.stringify(data)}`);
+          
+          // ✅ ENHANCED LOG: Shows detailed MQTT message content
+          if (topic.startsWith("jobs/") && topic.includes("/status")) {
+            logMsg(`📡 Job Status: [${data.driver || 'unknown'}] ${data.status} for ${topic.split('/')[1]} | Coords: ${data.lat?.toFixed(5) || 'N/A'}, ${data.lng?.toFixed(5) || 'N/A'}`);
+          } else if (topic.startsWith("drivers/") && topic.includes("/status")) {
+            const driverId = topic.split('/')[1];
+            logMsg(`📡 Driver Status: [${driverId}] ${data.status}`);
+          } else if (topic.endsWith("/location")) {
+            const driverId = topic.split('/')[1];
+            logMsg(`📡 Driver Location: [${driverId}] ${data.lat?.toFixed(5) || 'N/A'}, ${data.lng?.toFixed(5) || 'N/A'} | Status: ${data.status || 'idle'}`);
+          } else {
+            logMsg(`📡 MQTT: ${topic} -> ${JSON.stringify(data)}`);
+          }
 
           if (topic.endsWith('/location')) {
             const id = topic.split('/')[1];
@@ -809,4 +825,3 @@ function updateDriver(id, lat, lng, meta = {}) {
   </script>
 </body>
 </html>
-
