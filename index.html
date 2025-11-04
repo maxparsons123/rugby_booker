@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Black Cab Unite — Coventry Rugby (Butts Park Arena) v2.5 (Fully Secured)</title>
+  <title>Black Cab Unite — Coventry Rugby (Butts Park Arena) v2.6 (Final Secured)</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta name="theme-color" content="#1f6feb" />
   <link rel="manifest" href="manifest.json" />
@@ -166,7 +166,7 @@
     <div class="main">
       <div id="map"></div>
       <div class="panel">
-                <div class="booking-panel">
+        <div class="booking-panel">
           <div class="booking-row">
             <input type="text" id="customerName" placeholder="Customer name" />
             <input type="tel" id="customerPhone" placeholder="+44 7123 456789" />
@@ -175,7 +175,7 @@
           <button class="clear-btn" id="clearStorageBtn">🗑️ Clear All Data</button>
         </div>
 
-                <div class="scroll-content">
+        <div class="scroll-content">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
             <div style="font-weight:700">Nearby Drivers</div>
             <button class="small-btn" id="simulateBtn">Toggle Sim Drivers</button>
@@ -198,7 +198,7 @@
       <div>Topics: pubs/requests/{pub_id} • drivers/tokens • jobs/+/status</div>
     </footer>
 
-        <div class="admin-panel" id="adminPanel">
+    <div class="admin-panel" id="adminPanel">
       <span class="close-btn" id="closeAdmin">&times;</span>
       <h3>Admin Panel</h3>
       <div>
@@ -211,7 +211,7 @@
       <div style="margin-top:12px;"><strong>Allowed:</strong><ul id="allowedDriversList"></ul></div>
     </div>
 
-        <div id="logPanel">
+    <div id="logPanel">
       <h3 style="margin:0 0 8px 0;">📋 Activity Log</h3>
       <div id="logOutput"></div>
       <button class="small-btn" onclick="clearLog()">Clear Log</button>
@@ -560,19 +560,19 @@
               if (data.status === 'bidding' && data.driver) {
                 const driverId = data.driver;
 
-                // ⭐ CRITICAL FIX: Ensure the driver object exists before accessing its properties.
+                // ⭐ CRITICAL FIX: Initialise driver state if it doesn't exist *before* checks
                 if (!drivers[driverId]) {
-                  logMsg(`💡 Initializing state for new driver: ${driverId}`);
-                  drivers[driverId] = { 
-                    lat: data.lat || PUB_COORDS.lat, 
-                    lng: data.lng || PUB_COORDS.lng, 
-                    data: { status: 'idle' }, 
-                    fcmToken: null, 
-                    lastActive: Date.now(), 
+                  logMsg(`💡 Initializing state for new bidding driver: ${driverId}`);
+                  drivers[driverId] = {
+                    lat: data.lat || PUB_COORDS.lat,
+                    lng: data.lng || PUB_COORDS.lng,
+                    data: { status: 'idle' },
+                    fcmToken: null,
+                    lastActive: Date.now(),
                     activeJobId: null,
-                    marker: null // Marker created on location update
+                    marker: null
                   };
-                  // Run updateDriver to initialize marker and location
+                  // Run updateDriver to initialize marker and location safely
                   updateDriver(driverId, drivers[driverId].lat, drivers[driverId].lng, drivers[driverId].data);
                 }
 
@@ -597,10 +597,13 @@
                   pendingJobs[jobId].bidCount += 1;
                   pendingJobs[jobId].bids[driverId] = { lat: data.lat, lng: data.lng, timestamp: data.ts };
                   drivers[driverId].activeJobId = jobId; // **SECURITY FIX 2: Lock the driver to this job during bidding**
+                  
+                  // ⭐ CRITICAL FIX: Ensure map marker is updated with the latest bid location and driver list is refreshed
+                  updateDriver(driverId, data.lat, data.lng, { status: drivers[driverId].data.status });
+
                   visibleJobs[jobId].status = `Bidding (${pendingJobs[jobId].bidCount})`;
                   visibleJobs[jobId].driver = '-';
                   updateJobsTable();
-                  refreshDriverList(); // Update list to show active job
                   logMsg(`📥 Bid #${pendingJobs[jobId].bidCount} for ${jobId} from ${driverId}`);
                 }
               }
@@ -610,14 +613,13 @@
                 visibleJobs[jobId].driver = data.driver || '-';
                
                 // Clear active job status if job is complete/cancelled
-                if (data.driver && (data.status === 'complete' || data.status === 'cancelled')) {
-                  if (drivers[data.driver]) drivers[data.driver].activeJobId = null;
-                  refreshDriverList();
+                // Using reliable existence check for data.driver and drivers[data.driver]
+                if (data.driver && drivers[data.driver] && (data.status === 'complete' || data.status === 'cancelled')) {
+                  drivers[data.driver].activeJobId = null;
+                  refreshDriverList(); // Refresh list to show driver is available
                 }
 
                 updateJobsTable();
-                // Not strictly needed here, but doesn't hurt to ensure persistence
-                // localStorage.setItem('visibleJobs', JSON.stringify(visibleJobs)); 
               }
             }
         } catch(e) { console.warn("MQTT parse error:", e); }
@@ -900,7 +902,7 @@
       if (simActive) {
         logMsg('🛠️ Simulation started.');
         // Create a few simulated drivers
-        ['sim-01', 'sim-02', 'sim-03', 'sim-04'].forEach((id, index) => {
+        ['sim-01', 'sim-02', 'sim-03', 'sim-04'].forEach((id) => {
           if (!drivers[id]) {
             simDrivers[id] = {
               lat: PUB_COORDS.lat + (Math.random() - 0.5) * 0.005,
@@ -909,7 +911,9 @@
               status: 'idle',
             };
           } else {
+            // If the real drivers object has this driver (from previous run), use its state
             simDrivers[id] = drivers[id];
+            simDrivers[id].status = drivers[id].data.status;
           }
           // Ensure status is initialized for the map marker
           updateDriver(id, simDrivers[id].lat, simDrivers[id].lng, { status: simDrivers[id].status });
@@ -937,26 +941,28 @@
         d.lat = newLat;
         d.lng = newLng;
 
-        // Ensure drivers[id] exists before accessing activeJobId
+        // Get the live driver state from the main drivers object
         const driverState = drivers[id];
-        if (driverState && driverState.activeJobId) {
+        const activeJob = driverState ? driverState.activeJobId : null;
+
+        if (activeJob) {
           // If driver is allocated to a job, simulate status updates
-          const job = visibleJobs[driverState.activeJobId];
+          const job = visibleJobs[activeJob];
           if (job) {
             if (job.status === 'allocated') {
               // After a delay, move to 'on_route'
               if (Math.random() < 0.3) {
-                client.publish(`drivers/${id}/status`, JSON.stringify({ status: 'on_route', jobId: driverState.activeJobId, ts: Date.now() }));
+                client.publish(`drivers/${id}/status`, JSON.stringify({ status: 'on_route', jobId: activeJob, ts: Date.now() }));
               }
             } else if (job.status === 'on_route') {
               // After a delay, move to 'arrived' (near the pub)
               if (distanceMeters(d, PUB_COORDS) < 200 && Math.random() < 0.3) {
-                client.publish(`drivers/${id}/status`, JSON.stringify({ status: 'arrived', jobId: driverState.activeJobId, ts: Date.now() }));
+                client.publish(`drivers/${id}/status`, JSON.stringify({ status: 'arrived', jobId: activeJob, ts: Date.now() }));
               }
             } else if (job.status === 'arrived') {
               // After a delay, move to 'complete'
               if (Math.random() < 0.1) {
-                client.publish(`drivers/${id}/status`, JSON.stringify({ status: 'complete', jobId: driverState.activeJobId, ts: Date.now() }));
+                client.publish(`drivers/${id}/status`, JSON.stringify({ status: 'complete', jobId: activeJob, ts: Date.now() }));
               }
             }
           }
