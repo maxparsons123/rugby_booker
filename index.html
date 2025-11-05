@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Black Cab Unite — Coventry Rugby (Butts Park Arena) v2.2</title>
+  <title>Black Cab Unite — Coventry Rugby (Butts Park Arena) v3.0</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta name="theme-color" content="#1f6feb" />
   <link rel="manifest" href="manifest.json" />
@@ -79,6 +79,7 @@
       width:100%;
     }
     .clear-btn:hover{background:#c82333;}
+    .small{font-size:13px;color:#666;}
     .status{padding:10px;border-radius:8px;background:#f2f6ff;color:#08306b;font-weight:600;}
     .driver-list{display:flex;flex-direction:column;gap:8px;max-height:140px;overflow:auto;}
     .driver-item{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px;border-radius:8px;background:#fff;border:1px solid #f0f0f0;}
@@ -151,7 +152,7 @@
   <div class="container">
     <header>
       <div class="brand">
-        <div style="width:44px;height:44px;border-radius:8px;background:linear-gradient(135deg,#004400,#228B22);display:flex;align-items:center;justify-content:center;color:white;font-weight:bold;">🏉</div>
+        <div style="width:44px;height:44px;border-radius:8px;background:linear-gradient(135deg,#004400,#228B22);display:flex;align-items:center;justify-content:center;color:white;font-weight:bold;"> rugby </div>
         <div>
           <h1>Black Cab Unite — Coventry Rugby</h1>
           <div class="small">Butts Park Arena</div>
@@ -248,7 +249,7 @@
       }
 
       try {
-        logMsg(`📤 Sending push to ${driverId}...`);
+        logMsg(`📤 Sending push to ${driverId} (reason: ${reason})...`);
         const response = await fetch(CLOUD_FUNCTION_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -281,7 +282,7 @@
     }
 
     // === STATE ===
-    const drivers = {}; // { id: { lat, lng, data: { status, ... }, fcmToken, marker, lastActive } }
+    const drivers = {}; // { id: { lat, lng,  { status, ... }, fcmToken, marker, lastActive, activeJobId } }
     const pendingJobs = {}; // { jobId: { ...jobData, bidCount, bids: { driverId: {lat, lng, ts} }, timeoutId } }
     let visibleJobs = safeParseJson('visibleJobs', {});
     let allowedDrivers = safeParseJson('allowedDrivers', []);
@@ -318,7 +319,6 @@
       const logs = (localStorage.getItem('activityLog') || '') + entry;
       localStorage.setItem('activityLog', logs);
       el.logOutput.textContent = logs;
-      // Auto-scroll if panel is open
       if (el.logOutput.parentElement.classList.contains('open')) {
         el.logOutput.scrollTop = el.logOutput.scrollHeight;
       }
@@ -372,8 +372,8 @@
         const color = getColorForDriver(id);
         drivers[id] = {
           lat, lng,
-          data:  { status: 'idle', ...meta }, // ✅ FIXED: Correctly assigns object to 'data' property
-          marker: L.marker([lat, lng]).addTo(map)
+            { status: 'idle', ...meta },
+          marker: L.circleMarker([lat, lng], { color, radius: 8 }).addTo(map)
         };
         drivers[id].marker.bindPopup(id);
       } else {
@@ -439,12 +439,12 @@
                 drivers[driverId] = {
                   lat: PUB_COORDS.lat,
                   lng: PUB_COORDS.lng,
-                   data: { label: 'Taxi', status: 'idle' }, // ✅ FIXED: Correctly assigns object to 'data' property
+                    { label: 'Taxi', status: 'idle' },
                   fcmToken: fcmToken,
                   lastActive: Date.now()
                 };
                 const color = getColorForDriver(driverId);
-                drivers[driverId].marker = L.marker([PUB_COORDS.lat, PUB_COORDS.lng]).addTo(map);
+                drivers[driverId].marker = L.circleMarker([PUB_COORDS.lat, PUB_COORDS.lng], { color, radius: 8 }).addTo(map);
                 drivers[driverId].marker.bindPopup(driverId);
               } else {
                 drivers[driverId].fcmToken = fcmToken;
@@ -463,7 +463,7 @@
             // Update local driver status
             if (!drivers[driverId]) {
               drivers[driverId] = {
-                data: { status: data.status || 'unknown' }, // ✅ FIXED: Correctly assigns object to 'data' property
+                 { status: data.status || 'unknown' },
                 lat: PUB_COORDS.lat,
                 lng: PUB_COORDS.lng,
                 fcmToken: null,
@@ -491,19 +491,52 @@
               const job = visibleJobs[assignedJobId];
               if (data.status === 'busy' || data.status === 'offline') {
                 logMsg(`⚠️ Driver ${driverId} (allocated to job ${assignedJobId}) went ${data.status}. Re-allocating job.`);
-                // Publish "driver unavailable" to all bidders for this job
-                const allBidders = Object.keys(job.originalBidders || {}); // Assuming you store bidders when allocating
-                allBidders.forEach(bidderId => {
-                   client.publish(`jobs/${assignedJobId}/result/${bidderId}`, JSON.stringify({ result: "driver_unavailable" }));
+                // ✅ FIXED: Re-allocate with NEW ID
+                const newJobId = 'job-' + Date.now().toString(36) + Math.random().toString(36).substr(2, 2);
+                const newJob = { ...job, job: newJobId, status: 'queued', driver: '-' };
+                
+                // Send "driver unavailable" to *original* bidders for the *old* job
+                const originalBidders = Object.keys(job.originalBidders || {});
+                originalBidders.forEach(bidderId => {
+                   client.publish(`jobs/${assignedJobId}/result/${bidderId}`, JSON.stringify({ result: "driver_unavailable_for_original_job" }));
+                   // Optionally, send a polite message to the loser
+                   sendPushToDriver(bidderId, drivers[bidderId]?.fcmToken, assignedJobId, 'polite_better_luck_next_time');
                 });
-                // Remove driver from job record and reset status
-                job.driver = '-';
-                job.status = 're-allocating';
-                updateJobsTable();
+                
+                // Remove old job from visible list
+                delete visibleJobs[assignedJobId];
+                // Add new job to visible list
+                visibleJobs = { [newJobId]: newJob, ...visibleJobs };
+                
+                // Update local storage
                 localStorage.setItem('visibleJobs', JSON.stringify(visibleJobs));
-                // Start re-allocation process (e.g., re-send to eligible drivers, or use your bidding logic again)
-                // For simplicity, just send it again to available drivers
-                reAllocateJob(job);
+                
+                // Publish NEW job ID to pubs/requests/
+                client.publish(`pubs/requests/${PUB_ID}`, JSON.stringify(newJob));
+                
+                // Send FCM pushes for the NEW job ID
+                const now = Date.now();
+                Object.entries(drivers).forEach(([id, driver]) => {
+                  if (!id || !driver.fcmToken) return;
+                  const isAllowed = debugAllowAll || allowedDrivers.includes(id);
+                  const isFresh = (now - (driver.lastActive || 0)) < 60_000;
+                  const inRange = distanceMeters(driver, PUB_COORDS) <= 10_000;
+                  const isActive = driver.data?.status === 'available' || driver.data?.status === 'idle';
+                  
+                  let reason = 'eligible';
+                  if (!isAllowed) reason = 'not_allowed';
+                  else if (!isFresh) reason = 'gps_old';
+                  else if (!inRange) reason = 'out_of_range';
+                  else if (!isActive) reason = 'not_idle_or_available';
+                  
+                  if (reason === 'eligible') {
+                    sendPushToDriver(id, driver.fcmToken, newJobId, 'reallocated_job');
+                    newJob.originalBidders[id] = true; // Track new eligible driver
+                  }
+                });
+                
+                logMsg(`🔄 Re-allocated job. Old ID: ${assignedJobId}, New ID: ${newJobId}`);
+                updateJobsTable();
               }
             }
           }
@@ -514,6 +547,10 @@
             if (visibleJobs[jobId]) {
               if (data.status === 'bidding' && data.driver) {
                 if (!pendingJobs[jobId]) {
+                  if (!visibleJobs[jobId]) {
+                    logMsg(`⚠️ Received bid for unknown job: ${jobId}`);
+                    return;
+                  }
                   pendingJobs[jobId] = {
                     ...visibleJobs[jobId],
                     bidCount: 0,
@@ -546,6 +583,31 @@
       });
     }
 
+    function resendOfflineJobs() {
+      const offlineQueue = safeParseJson('offlineQueue', []);
+      if (offlineQueue.length === 0) return;
+      offlineQueue.forEach(j => {
+        client.publish(`pubs/requests/${PUB_ID}`, JSON.stringify(j));
+        logMsg('☁️ Resent job ' + j.job);
+      });
+      localStorage.setItem('offlineQueue', '[]');
+    }
+
+    function updateJobsTable() {
+      el.jobsTable.innerHTML = '';
+      Object.entries(visibleJobs).forEach(([id, j]) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${id}</td>
+          <td>${j.customerName || '-'}</td>
+          <td>${j.customerPhone || '-'}</td>
+          <td>${j.driver || '-'}</td>
+          <td>${j.status}</td>
+        `;
+        el.jobsTable.appendChild(tr);
+      });
+    }
+
     // === JOBS ===
     function sendOrder() {
       const name = el.customerName.value.trim();
@@ -564,7 +626,7 @@
         ts: Date.now(),
         status: 'queued',
         driver: '-',
-        originalBidders: [] // Track bidders for re-allocation
+        originalBidders: {} // Track bidders for this job
       };
 
       visibleJobs = { [jobId]: job, ...visibleJobs };
@@ -591,7 +653,7 @@
           
           if (reason === 'eligible') {
             sendPushToDriver(id, driver.fcmToken, jobId, reason);
-            job.originalBidders.push(id); // Track eligible driver
+            job.originalBidders[id] = true; // Track eligible driver
           }
         });
         
@@ -602,31 +664,6 @@
         localStorage.setItem('offlineQueue', JSON.stringify(offlineQueue));
         logMsg('📦 Stored offline job ' + jobId);
       }
-    }
-
-    function resendOfflineJobs() {
-      const offlineQueue = safeParseJson('offlineQueue', []);
-      if (offlineQueue.length === 0) return;
-      offlineQueue.forEach(j => {
-        client.publish(`pubs/requests/${PUB_ID}`, JSON.stringify(j));
-        logMsg('☁️ Resent job ' + j.job);
-      });
-      localStorage.setItem('offlineQueue', '[]');
-    }
-
-    function updateJobsTable() {
-      el.jobsTable.innerHTML = '';
-      Object.entries(visibleJobs).forEach(([id, j]) => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${id}</td>
-          <td>${j.customerName || '-'}</td>
-          <td>${j.customerPhone || '-'}</td>
-          <td>${j.driver || '-'}</td>
-          <td>${j.status}</td>
-        `;
-        el.jobsTable.appendChild(tr);
-      });
     }
 
     // === FINALIZE BIDDING (60s) ===
@@ -640,7 +677,6 @@
       if (bids.length > 0) {
         const valid = bids.filter(([id]) => {
           const d = drivers[id];
-          // ✅ FIXED: Correctly access status via d.data.status
           return d && (d.data?.status === 'idle' || d.data?.status === 'available');
         });
 
@@ -661,6 +697,8 @@
         bids.forEach(([driverId]) => {
           if (driverId !== winner) {
             client.publish(`jobs/${jobId}/result/${driverId}`, JSON.stringify({ result: "lost" }));
+            // ✅ SEND POLITE MESSAGE TO LOSER
+            sendPushToDriver(driverId, drivers[driverId]?.fcmToken, jobId, 'polite_better_luck_next_time');
           }
         });
         logMsg(`🏆 ${jobId} → ${winner}`);
@@ -669,6 +707,8 @@
         visibleJobs[jobId].driver = '-';
         bids.forEach(([driverId]) => {
           client.publish(`jobs/${jobId}/result/${driverId}`, JSON.stringify({ result: "no_valid_acceptance" }));
+          // ✅ SEND POLITE MESSAGE TO BIDDERS WHO DIDN'T ACCEPT
+          sendPushToDriver(driverId, drivers[driverId]?.fcmToken, jobId, 'polite_no_valid_acceptance');
         });
         logMsg(`⏰ ${jobId}: no valid bids`);
       }
@@ -676,39 +716,6 @@
       delete pendingJobs[jobId];
       updateJobsTable();
       localStorage.setItem('visibleJobs', JSON.stringify(visibleJobs));
-    }
-
-    // Function to re-allocate a job if winning driver goes offline/busy
-    function reAllocateJob(job) {
-      logMsg(`🔄 Re-allocating job ${job.job}...`);
-      job.status = 'queued';
-      job.driver = '-';
-      job.originalBidders = []; // Reset bidders list
-      updateJobsTable();
-      localStorage.setItem('visibleJobs', JSON.stringify(visibleJobs));
-      // Publish job again to pubs/requests/
-      client.publish(`pubs/requests/${PUB_ID}`, JSON.stringify(job));
-      logMsg(`📤 Re-sent job ${job.job} for bidding.`);
-      // Send FCM pushes again to eligible drivers
-      const now = Date.now();
-      Object.entries(drivers).forEach(([id, driver]) => {
-        if (!id || !driver.fcmToken) return;
-        const isAllowed = debugAllowAll || allowedDrivers.includes(id);
-        const isFresh = (now - (driver.lastActive || 0)) < 60_000;
-        const inRange = distanceMeters(driver, PUB_COORDS) <= 10_000;
-        const isActive = driver.data?.status === 'available' || driver.data?.status === 'idle'; // ✅ Access via driver.data.status
-        
-        let reason = 'eligible';
-        if (!isAllowed) reason = 'not_allowed';
-        else if (!isFresh) reason = 'gps_old';
-        else if (!inRange) reason = 'out_of_range';
-        else if (!isActive) reason = 'not_idle_or_available';
-        
-        if (reason === 'eligible') {
-            sendPushToDriver(id, driver.fcmToken, job.job, 'reallocated_job');
-            job.originalBidders.push(id); // Track new eligible driver
-        }
-      });
     }
 
     // === SIMULATION ===
@@ -723,22 +730,24 @@
         const id = `driver-${i}`;
         const lat = PUB_COORDS.lat + (Math.random() - 0.5) * 0.004;
         const lng = PUB_COORDS.lng + (Math.random() - 0.5) * 0.004;
+        const status = ['idle', 'available'][Math.floor(Math.random() * 2)];
         if (client && client.connected) {
-          client.publish(`drivers/${id}/location`, JSON.stringify({ lat, lng, status: 'idle' }));
-          client.publish(`drivers/${id}/status`, JSON.stringify({ driver: id, status: 'idle', ts: Date.now() }));
+          client.publish(`drivers/${id}/location`, JSON.stringify({ lat, lng, status }));
+          client.publish(`drivers/${id}/status`, JSON.stringify({ driver: id, status, ts: Date.now() }));
           if (!drivers[id]) {
             drivers[id] = {
               lat, lng,
-               data: { status: 'idle' }, // ✅ FIXED: Correctly assigns object to 'data' property
+                { status },
               fcmToken: `simulated-token-${id}`,
-              lastActive: Date.now()
+              lastActive: Date.now(),
+              activeJobId: null
             };
             const color = getColorForDriver(id);
-            drivers[id].marker = L.marker([lat, lng]).addTo(map);
+            drivers[id].marker = L.circleMarker([lat, lng], { color, radius: 8 }).addTo(map);
             drivers[id].marker.bindPopup(id);
           }
         }
-        updateDriver(id, lat, lng,  { status: 'idle' });
+        updateDriver(id, lat, lng, { status });
       }
       setTimeout(simLoop, 3000);
     }
@@ -781,4 +790,3 @@
   </script>
 </body>
 </html>
-
