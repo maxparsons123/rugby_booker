@@ -737,7 +737,7 @@
           if (!drivers[id]) {
             drivers[id] = {
               lat, lng,
-                { status },
+              data:  { status },
               fcmToken: `simulated-token-${id}`,
               lastActive: Date.now(),
               activeJobId: null
@@ -790,4 +790,5 @@
   </script>
 </body>
 </html>
+
 
