@@ -921,6 +921,8 @@
         localStorage.setItem('offlineQueue', JSON.stringify(offlineQueue));
         logMsg('📦 Stored offline job ' + jobId);
       }
+      el.customerName.value = '';
+      el.customerPhone.value = '';
     }
 
     // === FINALIZE BIDDING (60s) ===
@@ -1047,3 +1049,4 @@
   </script>
 </body>
 </html>
+
