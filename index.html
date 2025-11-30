@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta name="theme-color" content="#1f6feb" />
   <link rel="manifest" href="manifest.json" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css  " />
   <style>
     :root{--accent:#1f6feb;--accent-2:#ff7b00;--bg:#f7fafc;--card:#ffffff;}
     html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:#111;}
@@ -17,7 +17,7 @@
     .small{font-size:13px;color:#666;}
     .tablet-info{text-align:right;font-size:13px;color:#444;}
     .main{display:flex;gap:12px;flex:1;min-height:0;}
-    #map{flex:1;border-radius:12px;box-shadow:0 6px 16px rgba(0,0,0,0.08);}
+    #map{flex:1;border-radius:12px;box-shadow:0 6px 16px rgba(0,0,0,0.08);background-color:#e0e0e0;} /* Added background color for clarity */
     .panel{
       width:360px;
       min-width:260px;
@@ -82,8 +82,7 @@
     .small{font-size:13px;color:#666;}
     .status{padding:10px;border-radius:8px;background:#f2f6ff;color:#08306b;font-weight:600;}
     .driver-list{display:flex;flex-direction:column;gap:8px;max-height:140px;overflow:auto;}
-    .driver-item{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px;border-radius:8px;background:#fff;border:1px solid #f0f0f0;cursor:pointer;}
-    .driver-item:hover{background-color:#f0f8ff;}
+    .driver-item{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px;border-radius:8px;background:#fff;border:1px solid #f0f0f0;}
     .small-btn{
       border:1px solid #ddd;
       background:#fff;
@@ -318,8 +317,8 @@
 
   </div>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js  "></script>
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js  "></script>
   <script>
     // === CONFIG ===
     const PUB_ID = 'coventry-rugby-butts-park';
@@ -328,7 +327,7 @@
     const BIDDING_WINDOW_MS = 60_000; // 60 seconds
 
     // ===== FCM PUSH VIA CLOUD FUNCTION (HTTP) =====
-    const CLOUD_FUNCTION_URL = 'https://europe-west2-cabunite.cloudfunctions.net/sendJobAlertHttp';
+    const CLOUD_FUNCTION_URL = 'https://europe-west2-cabunite.cloudfunctions.net/sendJobAlertHttp  ';
 
     async function sendPushToDriver(driverId, fcmToken, jobId, reason) {
       if (!driverId || typeof driverId !== 'string' || driverId.trim() === '') {
@@ -483,7 +482,7 @@
         const color = getColorForDriver(id);
         drivers[id] = {
           lat, lng,
-          data: { status: 'idle', ...meta },
+          data:  { status: 'idle', ...meta },
           marker: L.circleMarker([lat, lng], { color, radius: 8 }).addTo(map)
         };
         drivers[id].marker.bindPopup(id);
@@ -508,13 +507,6 @@
           <div><b>${id}</b><div class="small">${status}</div></div>
           <div>${dist < 1000 ? dist.toFixed(0) + 'm' : (dist / 1000).toFixed(1) + 'km'}</div>
         `;
-        // Add click event to zoom to driver
-        div.onclick = () => {
-          map.setView([d.lat, d.lng], 16); // Zoom to driver's location
-          if (d.marker) {
-            d.marker.openPopup(); // Open popup to highlight
-          }
-        };
         el.driverList.appendChild(div);
       });
     }
@@ -563,11 +555,8 @@
         return;
       }
 
-      // Update status locally
-      visibleJobs[jobId].status = 'cancelled';
-      if (visibleJobs[jobId].driver) {
-        visibleJobs[jobId].driver = '-';
-      }
+      // Remove the job from the visible list and local storage
+      delete visibleJobs[jobId];
       updateJobsTable();
       localStorage.setItem('visibleJobs', JSON.stringify(visibleJobs));
 
@@ -584,7 +573,7 @@
       }
 
       closeJobModal();
-      logMsg(`✅ Job ${jobId} cancelled by passenger.`);
+      logMsg(`✅ Job ${jobId} cancelled by passenger and removed from list.`);
     }
 
     function trackDriver(jobId) {
@@ -679,7 +668,7 @@
                 drivers[driverId] = {
                   lat: PUB_COORDS.lat,
                   lng: PUB_COORDS.lng,
-                  data: { label: 'Taxi', status: 'idle' },
+                  data:    { label: 'Taxi', status: 'idle' },
                   fcmToken: fcmToken,
                   lastActive: Date.now()
                 };
@@ -713,7 +702,7 @@
                 drivers[driverId] = {
                   lat: PUB_COORDS.lat,
                   lng: PUB_COORDS.lng,
-                  data: { status },
+                  data:  { status },
                   fcmToken: null,
                   lastActive: timestamp,
                   activeJobId: null,
@@ -836,17 +825,20 @@
                 }
               }
 
-              // --- NEW: Handle cancellation ---
+              // --- HANDLING CANCELLATION: REMOVE JOB ---
               if (data.status === 'cancelled') {
-                visibleJobs[jobId].status = 'cancelled';
-                visibleJobs[jobId].driver = '-'; // Clear driver
-                updateJobsTable();
-                localStorage.setItem('visibleJobs', JSON.stringify(visibleJobs));
-                logMsg(`✅ Job ${jobId} marked as cancelled (received from MQTT).`);
+                delete visibleJobs[jobId]; // Remove the job from the list
+                updateJobsTable(); // Update the UI table
+                localStorage.setItem('visibleJobs', JSON.stringify(visibleJobs)); // Update local storage
+                logMsg(`✅ Job ${jobId} removed from list (received cancelled status from MQTT).`);
+                // Check if the cancelled job is the one currently open in the modal
+                if (selectedJobId === jobId) {
+                    closeJobModal(); // Close the modal if it was showing the cancelled job
+                }
               }
-              // --- END NEW: Handle cancellation ---
+              // --- END HANDLING CANCELLATION ---
 
-              // --- Existing non-bidding status update (KEEP THIS) ---
+              // --- Existing non-bidding status update (KEEP THIS for other statuses) ---
               if (data.status !== 'bidding' && data.status !== 'cancelled') {
                 visibleJobs[jobId].status = data.status;
                 visibleJobs[jobId].driver = data.driver || '-';
@@ -1004,7 +996,7 @@
           if (!drivers[id]) {
             drivers[id] = {
               lat, lng,
-              data: { status },
+              data:   { status },
               fcmToken: `simulated-token-${id}`,
               lastActive: Date.now(),
               activeJobId: null
