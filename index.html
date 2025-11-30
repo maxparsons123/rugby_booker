@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta name="theme-color" content="#1f6feb" />
   <link rel="manifest" href="manifest.json" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css  " />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css    " />
   <style>
     :root{--accent:#1f6feb;--accent-2:#ff7b00;--bg:#f7fafc;--card:#ffffff;}
     html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:#111;}
@@ -82,7 +82,8 @@
     .small{font-size:13px;color:#666;}
     .status{padding:10px;border-radius:8px;background:#f2f6ff;color:#08306b;font-weight:600;}
     .driver-list{display:flex;flex-direction:column;gap:8px;max-height:140px;overflow:auto;}
-    .driver-item{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px;border-radius:8px;background:#fff;border:1px solid #f0f0f0;}
+    .driver-item{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px;border-radius:8px;background:#fff;border:1px solid #f0f0f0; cursor: pointer; /* Added cursor pointer */}
+    .driver-item:hover { background-color: #f0f0f0; /* Added hover effect */ }
     .small-btn{
       border:1px solid #ddd;
       background:#fff;
@@ -317,8 +318,8 @@
 
   </div>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js  "></script>
-  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js  "></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js    "></script>
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js    "></script>
   <script>
     // === CONFIG ===
     const PUB_ID = 'coventry-rugby-butts-park';
@@ -327,7 +328,7 @@
     const BIDDING_WINDOW_MS = 60_000; // 60 seconds
 
     // ===== FCM PUSH VIA CLOUD FUNCTION (HTTP) =====
-    const CLOUD_FUNCTION_URL = 'https://europe-west2-cabunite.cloudfunctions.net/sendJobAlertHttp  ';
+    const CLOUD_FUNCTION_URL = 'https://europe-west2-cabunite.cloudfunctions.net/sendJobAlertHttp    ';
 
     async function sendPushToDriver(driverId, fcmToken, jobId, reason) {
       if (!driverId || typeof driverId !== 'string' || driverId.trim() === '') {
@@ -507,6 +508,16 @@
           <div><b>${id}</b><div class="small">${status}</div></div>
           <div>${dist < 1000 ? dist.toFixed(0) + 'm' : (dist / 1000).toFixed(1) + 'km'}</div>
         `;
+        // --- NEW: Add click event to zoom to driver ---
+        div.onclick = () => {
+            if (d.marker) {
+                map.flyTo([d.lat, d.lng], 16); // Fly to driver's location with zoom level 16
+                logMsg(`📍 Zoomed to driver ${id}`);
+            } else {
+                logMsg(`⚠️ No marker found for driver ${id} to zoom.`);
+            }
+        };
+        // --- END NEW ---
         el.driverList.appendChild(div);
       });
     }
