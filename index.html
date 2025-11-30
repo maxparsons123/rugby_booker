@@ -82,7 +82,8 @@
     .small{font-size:13px;color:#666;}
     .status{padding:10px;border-radius:8px;background:#f2f6ff;color:#08306b;font-weight:600;}
     .driver-list{display:flex;flex-direction:column;gap:8px;max-height:140px;overflow:auto;}
-    .driver-item{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px;border-radius:8px;background:#fff;border:1px solid #f0f0f0;}
+    .driver-item{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px;border-radius:8px;background:#fff;border:1px solid #f0f0f0;cursor:pointer;}
+    .driver-item:hover{background-color:#f0f8ff;}
     .small-btn{
       border:1px solid #ddd;
       background:#fff;
@@ -375,7 +376,7 @@
     }
 
     // === STATE ===
-    const drivers = {}; // { id: { lat, lng,  { status, ... }, fcmToken, marker, lastActive, activeJobId } }
+    const drivers = {}; // { id: { lat, lng, data: { status, ... }, fcmToken, marker, lastActive, activeJobId } }
     const pendingJobs = {}; // { jobId: { ...jobData, bidCount, bids: { driverId: {lat, lng, ts} }, timeoutId } }
     let visibleJobs = safeParseJson('visibleJobs', {});
     let allowedDrivers = safeParseJson('allowedDrivers', []);
@@ -482,7 +483,7 @@
         const color = getColorForDriver(id);
         drivers[id] = {
           lat, lng,
-         data:  { status: 'idle', ...meta },
+          data: { status: 'idle', ...meta },
           marker: L.circleMarker([lat, lng], { color, radius: 8 }).addTo(map)
         };
         drivers[id].marker.bindPopup(id);
@@ -507,6 +508,13 @@
           <div><b>${id}</b><div class="small">${status}</div></div>
           <div>${dist < 1000 ? dist.toFixed(0) + 'm' : (dist / 1000).toFixed(1) + 'km'}</div>
         `;
+        // Add click event to zoom to driver
+        div.onclick = () => {
+          map.setView([d.lat, d.lng], 16); // Zoom to driver's location
+          if (d.marker) {
+            d.marker.openPopup(); // Open popup to highlight
+          }
+        };
         el.driverList.appendChild(div);
       });
     }
@@ -671,7 +679,7 @@
                 drivers[driverId] = {
                   lat: PUB_COORDS.lat,
                   lng: PUB_COORDS.lng,
-               data:    { label: 'Taxi', status: 'idle' },
+                  data: { label: 'Taxi', status: 'idle' },
                   fcmToken: fcmToken,
                   lastActive: Date.now()
                 };
@@ -705,7 +713,7 @@
                 drivers[driverId] = {
                   lat: PUB_COORDS.lat,
                   lng: PUB_COORDS.lng,
-               data:  { status },
+                  data: { status },
                   fcmToken: null,
                   lastActive: timestamp,
                   activeJobId: null,
@@ -996,7 +1004,7 @@
           if (!drivers[id]) {
             drivers[id] = {
               lat, lng,
-            data:   { status },
+              data: { status },
               fcmToken: `simulated-token-${id}`,
               lastActive: Date.now(),
               activeJobId: null
@@ -1049,4 +1057,3 @@
   </script>
 </body>
 </html>
-
