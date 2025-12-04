@@ -6,7 +6,6 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta name="theme-color" content="#1f6feb" />
   <link rel="manifest" href="manifest.json" />
-  <!-- ✅ 1. Load Leaflet locally (if possible) or use a faster CDN -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
     :root{--accent:#1f6feb;--accent-2:#ff7b00;--bg:#f7fafc;--card:#ffffff;}
@@ -228,6 +227,8 @@
       <div class="tablet-info">
         <button class="small-btn" id="logBtn">View Log</button>
         <button class="small-btn" id="adminBtn">Admin Panel</button>
+        <!-- ✅ NEW: Toggle button for online/offline mode -->
+        <button class="small-btn" id="mapModeBtn">Mode: Online</button>
       </div>
     </header>
 
@@ -304,7 +305,6 @@
 
   </div>
 
-  <!-- ✅ 1. Load Leaflet locally or use a faster CDN -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <script>
@@ -392,6 +392,7 @@
       logPanel: document.getElementById('logPanel'),
       logOutput: document.getElementById('logOutput'),
       clearStorageBtn: document.getElementById('clearStorageBtn'),
+      mapModeBtn: document.getElementById('mapModeBtn'), // NEW
       jobModal: document.getElementById('jobModal'),
       modalJobTitle: document.getElementById('modalJobTitle'),
       modalCustomerName: document.getElementById('modalCustomerName'),
@@ -437,25 +438,52 @@
       }
     };
 
-    // === MAP SETUP (OFFLINE TILES) ===
-    // ✅ 2. CHANGE THIS LINE TO USE OFFLINE TILES
-    const map = L.map('map').setView([PUB_COORDS.lat, PUB_COORDS.lng], 15);
-    L.tileLayer('./tiles/{z}/{x}/{y}.png', {
-      minZoom: 10,
-      maxZoom: 17,
-      tileSize: 256,
-      noWrap: true,
-      attribution: '© OSM',
-      // ✅ 3. Optimize tile loading for speed
-      maxNativeZoom: 17,
-      maxZoom: 17,
-      updateWhenIdle: true,
-      updateWhenZooming: false,
-      unloadInvisibleTiles: true,
-      reuseTiles: true,
-      detectRetina: false
-    }).addTo(map);
-    L.marker([PUB_COORDS.lat, PUB_COORDS.lng]).addTo(map).bindPopup(PUB_NAME);
+    // === MAP SETUP ===
+    let map;
+    let currentMapLayer;
+    let mapMode = 'online'; // 'online' or 'offline'
+
+    function initializeMap() {
+      if (map) {
+        // Remove existing map if it exists
+        map.remove();
+      }
+
+      map = L.map('map').setView([PUB_COORDS.lat, PUB_COORDS.lng], 15);
+
+      if (mapMode === 'online') {
+        currentMapLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '© OpenStreetMap contributors',
+          maxZoom: 18
+        }).addTo(map);
+        el.mapModeBtn.textContent = 'Mode: Online';
+      } else { // offline
+        currentMapLayer = L.tileLayer('./tiles/{z}/{x}/{y}.png', {
+          minZoom: 10,
+          maxZoom: 17,
+          tileSize: 256,
+          noWrap: true,
+          attribution: '© OSM',
+          maxNativeZoom: 17,
+          maxZoom: 17,
+          updateWhenIdle: true,
+          updateWhenZooming: false,
+          unloadInvisibleTiles: true,
+          reuseTiles: true,
+          detectRetina: false
+        }).addTo(map);
+        el.mapModeBtn.textContent = 'Mode: Offline';
+      }
+
+      L.marker([PUB_COORDS.lat, PUB_COORDS.lng]).addTo(map).bindPopup(PUB_NAME);
+    }
+
+    // === TOGGLE MAP MODE ===
+    el.mapModeBtn.onclick = () => {
+      mapMode = mapMode === 'online' ? 'offline' : 'online';
+      initializeMap(); // Re-initialize with new mode
+      logMsg(`🔄 Map mode switched to: ${mapMode}`);
+    };
 
     // === HELPERS ===
     function distanceMeters(a, b) {
@@ -477,7 +505,6 @@
     }
 
     // === DRIVER MANAGEMENT ===
-    // ✅ 4. Optimize driver updates to reduce DOM manipulation
     let refreshDriverListDebounced = null;
     function refreshDriverList() {
       if (refreshDriverListDebounced) {
@@ -502,7 +529,7 @@
           };
           el.driverList.appendChild(div);
         }
-      }, 100); // Debounce for 100ms
+      }, 100);
     }
 
     function updateDriver(id, lat, lng, meta = {}) {
@@ -511,7 +538,7 @@
         const color = getColorForDriver(id);
         drivers[id] = {
           lat, lng,
-          data:  { status: 'idle', ...meta },
+            { status: 'idle', ...meta },
           marker: L.circleMarker([lat, lng], { color, radius: 8 }).addTo(map)
         };
         drivers[id].marker.bindPopup(id);
@@ -522,7 +549,6 @@
         drivers[id].lng = lng;
       }
       drivers[id].lastActive = Date.now();
-      // Call debounced version
       refreshDriverList();
     }
 
@@ -614,7 +640,6 @@
     window.onclick = (event) => { if (event.target === el.jobModal) closeJobModal(); };
 
     // === JOBS TABLE LOGIC ===
-    // ✅ 5. Optimize job table updates
     let updateJobsTableDebounced = null;
     function updateJobsTable() {
       if (updateJobsTableDebounced) {
@@ -629,7 +654,7 @@
           tr.innerHTML = `<td>${id}</td><td>${j.customerName || '-'}</td><td>${j.customerPhone || '-'}</td><td>${j.driver || '-'}</td><td>${j.status}</td>`;
           el.jobsTable.appendChild(tr);
         }
-      }, 100); // Debounce for 100ms
+      }, 100);
     }
 
     // === MQTT ===
@@ -641,12 +666,9 @@
       statusEl.textContent = 'MQTT: connecting...';
       document.querySelector('.booking-panel').insertAdjacentElement('afterbegin', statusEl);
 
-      // ✅ 6. Optimize MQTT connection settings for slow networks
       client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', {
-        connectTimeout: 10000, // Increase timeout
-        reconnectPeriod: 5000, // Increase interval
-        // Reduce outgoing buffer if needed
-        // outgoingStore: // Use local storage for persistence if needed
+        connectTimeout: 10000,
+        reconnectPeriod: 5000,
       });
 
       client.on('connect', () => {
@@ -663,7 +685,7 @@
       client.on('message', (topic, msg) => {
         try {
           const data = JSON.parse(msg.toString());
-          // logMsg(`📡 ${topic} -> ${JSON.stringify(data)}`); // ✅ 7. Comment out logging for speed
+          // logMsg(`📡 ${topic} -> ${JSON.stringify(data)}`); // Commented for speed
 
           if (topic.endsWith('/location')) {
             const id = topic.split('/')[1];
@@ -677,7 +699,7 @@
                 drivers[driverId] = {
                   lat: PUB_COORDS.lat,
                   lng: PUB_COORDS.lng,
-                  data:    { label: 'Taxi', status: 'idle' },
+                      { label: 'Taxi', status: 'idle' },
                   fcmToken: fcmToken,
                   lastActive: Date.now()
                 };
@@ -708,7 +730,7 @@
                 drivers[driverId] = {
                   lat: PUB_COORDS.lat,
                   lng: PUB_COORDS.lng,
-                  data:  { status },
+                    { status },
                   fcmToken: null,
                   lastActive: timestamp,
                   activeJobId: null,
@@ -726,7 +748,7 @@
               }
 
               drivers[driverId].lastActive = timestamp;
-              refreshDriverList(); // Use debounced version
+              refreshDriverList();
               logMsg(`📊 Driver ${driverId} status updated to: ${status}`);
 
               const assignedJobId = Object.keys(visibleJobs).find(jobId => {
@@ -780,7 +802,7 @@
                   });
 
                   logMsg(`🔄 Re-allocated job. Old ID: ${assignedJobId}, New ID: ${newJobId}`);
-                  updateJobsTable(); // Use debounced version
+                  updateJobsTable();
                 }
               }
             } catch (err) {
@@ -810,7 +832,7 @@
                   pendingJobs[jobId].bids[data.driver] = { lat: data.lat, lng: data.lng, timestamp: data.ts };
                   visibleJobs[jobId].status = `Bidding (${pendingJobs[jobId].bidCount})`;
                   visibleJobs[jobId].driver = '-';
-                  updateJobsTable(); // Use debounced version
+                  updateJobsTable();
                   localStorage.setItem('visibleJobs', JSON.stringify(visibleJobs));
                   logMsg(`📥 Bid #${pendingJobs[jobId].bidCount} for ${jobId} from ${data.driver}`);
                 } else {
@@ -820,7 +842,7 @@
 
               if (data.status === 'cancelled') {
                 delete visibleJobs[jobId];
-                updateJobsTable(); // Use debounced version
+                updateJobsTable();
                 localStorage.setItem('visibleJobs', JSON.stringify(visibleJobs));
                 logMsg(`✅ Job ${jobId} removed from list (received cancelled status from MQTT).`);
                 if (selectedJobId === jobId) {
@@ -831,7 +853,7 @@
               if (data.status !== 'bidding' && data.status !== 'cancelled') {
                 visibleJobs[jobId].status = data.status;
                 visibleJobs[jobId].driver = data.driver || '-';
-                updateJobsTable(); // Use debounced version
+                updateJobsTable();
                 localStorage.setItem('visibleJobs', JSON.stringify(visibleJobs));
               }
             }
@@ -876,7 +898,7 @@
 
       visibleJobs = { [jobId]: job, ...visibleJobs };
       localStorage.setItem('visibleJobs', JSON.stringify(visibleJobs));
-      updateJobsTable(); // Use debounced version
+      updateJobsTable();
 
       if (client && client.connected) {
         client.publish(`pubs/requests/${PUB_ID}`, JSON.stringify(job));
@@ -958,7 +980,7 @@
       }
 
       delete pendingJobs[jobId];
-      updateJobsTable(); // Use debounced version
+      updateJobsTable();
       localStorage.setItem('visibleJobs', JSON.stringify(visibleJobs));
     }
 
@@ -981,7 +1003,7 @@
           if (!drivers[id]) {
             drivers[id] = {
               lat, lng,
-              data:   { status },
+                 { status },
               fcmToken: `simulated-token-${id}`,
               lastActive: Date.now(),
               activeJobId: null
@@ -993,7 +1015,7 @@
         }
         updateDriver(id, lat, lng, { status });
       }
-      setTimeout(simLoop, 5000); // Increase sim interval for less load
+      setTimeout(simLoop, 5000);
     }
 
     // === ADMIN ===
@@ -1016,16 +1038,17 @@
       refreshAllowedDriversList();
     };
     el.allowAllBtn.onclick = () => {
-      debugAllowAll = !debugAllowAll;
+      debugAllowAll = !debugAll;
       el.allowAllBtn.innerText = debugAllowAll ? 'Debug: Disallow All' : 'Debug: Allow All';
       logMsg('Debug allow all = ' + debugAllowAll);
     };
 
     // === INITIALIZATION ===
+    initializeMap(); // Initialize map in online mode by default
     el.orderBtn.onclick = sendOrder;
     el.simulateBtn.onclick = toggleSimDrivers;
     connectMQTT();
-    updateJobsTable(); // Use debounced version
+    updateJobsTable();
     refreshAllowedDriversList();
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('service-worker.js');
